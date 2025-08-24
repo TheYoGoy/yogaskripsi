@@ -1,0 +1,194 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+class Product extends Model
+{
+    use HasFactory;
+
+    /**
+     * The attributes that are mass assignable.
+     */
+    protected $fillable = [
+        'category_id',
+        'unit_id',
+        'supplier_id',
+        'name',
+        'code',
+        'sku',
+        'description',
+        'current_stock',
+        'price',
+        'lead_time',
+        'daily_usage_rate',
+    ];
+
+    protected $casts = [
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
+        'daily_usage_rate' => 'float',
+        'current_stock' => 'integer',
+        'price' => 'decimal:2',
+        'lead_time' => 'integer',
+    ];
+
+    /**
+     * Relasi ke kategori.
+     */
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(Category::class);
+    }
+
+    /**
+     * Relasi ke unit.
+     */
+    public function unit(): BelongsTo
+    {
+        return $this->belongsTo(Unit::class);
+    }
+
+    /**
+     * Relasi ke supplier.
+     */
+    public function supplier(): BelongsTo
+    {
+        return $this->belongsTo(Supplier::class);
+    }
+
+    /**
+     * Relasi ke transaksi stok masuk.
+     */
+    public function stockIns(): HasMany
+    {
+        return $this->hasMany(StockIn::class);
+    }
+
+    /**
+     * Relasi ke transaksi stok keluar.
+     */
+    public function stockOuts(): HasMany
+    {
+        return $this->hasMany(StockOut::class);
+    }
+
+    /**
+     * Relasi ke transaksi pembelian.
+     */
+    public function purchaseTransactions(): HasMany
+    {
+        return $this->hasMany(PurchaseTransaction::class);
+    }
+
+    /**
+     * Hitung ROP.
+     * ROP = rata-rata pemakaian harian * lead time + safety stock.
+     */
+    public function calculateRop(): int
+    {
+        $dailyUsage = $this->daily_usage_rate ?? $this->calculateDailyUsageRate();
+        $leadTime = $this->lead_time ?? 7; // Default 7 hari
+        $safetyStock = 5; // Fixed safety stock 5 unit
+
+        $rop = (int) round($dailyUsage * $leadTime + $safetyStock);
+
+        return max($rop, 5); // Minimal ROP 5 unit
+    }
+
+    /**
+     * Hitung EOQ.
+     * EOQ = √((2 × annual demand × ordering cost) / holding cost)
+     */
+    public function calculateEoq(): int
+    {
+        $dailyUsage = $this->daily_usage_rate ?? $this->calculateDailyUsageRate();
+        $annualDemand = $dailyUsage * 365;
+
+        // Fixed values tanpa settings
+        $orderingCost = 50000; // Rp 50.000 per order
+        $holdingCost = 2000;   // Rp 2.000 per unit per tahun
+
+        if ($holdingCost <= 0 || $annualDemand <= 0) {
+            return 0;
+        }
+
+        $numerator = 2 * $annualDemand * $orderingCost;
+        $eoq = (int) round(sqrt($numerator / $holdingCost));
+
+        return max($eoq, 1); // Minimal EOQ 1 unit
+    }
+
+    /**
+     * Hitung rata-rata pemakaian harian dari transaksi stock out.
+     */
+    public function calculateDailyUsageRate(): float
+    {
+        $totalOut = $this->stockOuts()->sum('quantity');
+
+        if ($totalOut == 0) {
+            return 0.5; // Default minimal usage 0.5 unit per hari
+        }
+
+        // Hitung jumlah hari unik yang ada transaksi stock out
+        $uniqueDays = $this->stockOuts()
+            ->selectRaw('COUNT(DISTINCT DATE(date)) as days')
+            ->value('days');
+
+        $days = max($uniqueDays ?: 30, 1); // Minimal 1 hari untuk avoid division by zero
+
+        return $totalOut / $days;
+    }
+
+    /**
+     * Update daily usage rate dari transaksi stock out
+     */
+    public function updateDailyUsageRate(): void
+    {
+        $newRate = $this->calculateDailyUsageRate();
+        $this->update(['daily_usage_rate' => $newRate]);
+    }
+
+    /**
+     * Cek apakah produk perlu di-reorder (stock <= ROP)
+     */
+    public function needsReorder(): bool
+    {
+        return $this->current_stock <= $this->calculateRop();
+    }
+
+    /**
+     * Get reorder status dengan warna
+     */
+    public function getReorderStatus(): array
+    {
+        $rop = $this->calculateRop();
+
+        if ($this->current_stock <= 0) {
+            return [
+                'status' => 'out_of_stock',
+                'message' => 'Stok habis',
+                'color' => 'red',
+                'urgent' => true
+            ];
+        } elseif ($this->current_stock <= $rop) {
+            return [
+                'status' => 'below_rop',
+                'message' => 'Di bawah ROP',
+                'color' => 'orange',
+                'urgent' => true
+            ];
+        } else {
+            return [
+                'status' => 'normal',
+                'message' => 'Normal',
+                'color' => 'green',
+                'urgent' => false
+            ];
+        }
+    }
+}
