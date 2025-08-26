@@ -21,6 +21,7 @@ class Product extends Model
         'name',
         'code',
         'sku',
+        'barcode',
         'description',
         'current_stock',
         'price',

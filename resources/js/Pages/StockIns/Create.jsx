@@ -26,21 +26,21 @@ import {
 } from "@/Components/ui/popover";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+import { id as localeId } from "date-fns/locale";
 import { CalendarIcon } from "lucide-react";
 import axios from "axios";
 import { toast } from "sonner";
 import { Html5QrcodeScanner } from "html5-qrcode";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 
-export default function StockInCreate({ auth, products, suppliers }) {
-    const [supplierName, setSupplierName] = useState("");
-    const [supplierPhone, setSupplierPhone] = useState("");
+export default function StockInCreate({ auth, products }) {
+    const [isProcessingAutofill, setIsProcessingAutofill] = useState(false);
+    const prevCodeRef = useRef("");
 
     const { data, setData, post, processing, errors, reset } = useForm({
         code: "",
         product_id: "",
         quantity: "",
-        supplier_id: "",
         stockin_date: format(new Date(), "yyyy-MM-dd"),
         source: "",
         purchase_transaction_id: "",
@@ -52,8 +52,6 @@ export default function StockInCreate({ auth, products, suppliers }) {
             onSuccess: () => {
                 toast.success("Stock In berhasil ditambahkan");
                 reset();
-                setSupplierName("");
-                setSupplierPhone("");
             },
             onError: () => {
                 toast.error("Gagal menambahkan Stock In");
@@ -61,54 +59,49 @@ export default function StockInCreate({ auth, products, suppliers }) {
         });
     };
 
-    // Auto-fill berdasarkan barcode/QR code
+    // Auto-fill berdasarkan barcode/QR code - untuk product dan quantity
     useEffect(() => {
-        if (data.code) {
+        if (data.code && data.code !== prevCodeRef.current && data.code.length > 2) {
+            prevCodeRef.current = data.code;
+            setIsProcessingAutofill(true);
+            
             axios
                 .get(route("stock-ins.autofill", { code: data.code }))
                 .then((response) => {
                     const autofill = response.data;
-                    const foundSupplier = suppliers.find(
-                        (s) => s.id === autofill.supplier_id
-                    );
-
+                    
+                    // Update field yang relevan untuk barcode scan
                     setData((prev) => ({
                         ...prev,
-                        product_id: autofill.product_id
-                            ? String(autofill.product_id)
-                            : "",
-                        supplier_id: autofill.supplier_id
-                            ? String(autofill.supplier_id)
-                            : "",
+                        product_id: autofill.product_id ? String(autofill.product_id) : "",
                         quantity: autofill.quantity ?? "",
-                        stockin_date:
-                            autofill.stockin_date ??
-                            format(new Date(), "yyyy-MM-dd"),
-                        purchase_transaction_id:
-                            autofill.purchase_transaction_id ?? "",
+                        stockin_date: autofill.stockin_date ?? format(new Date(), "yyyy-MM-dd"),
+                        purchase_transaction_id: autofill.purchase_transaction_id ?? "",
                     }));
 
-                    setSupplierName(foundSupplier?.name ?? "");
-                    setSupplierPhone(foundSupplier?.phone ?? "");
-
-                    toast.success(
-                        "Data berhasil terisi otomatis dari barcode."
-                    );
+                    toast.success("Data produk berhasil terisi dari barcode");
                 })
-                .catch(() => {
-                    toast.error("Kode tidak ditemukan dalam sistem.");
-                    setSupplierName("");
-                    setSupplierPhone("");
+                .catch((error) => {
+                    const errorMessage = error.response?.data?.message || 
+                        "Kode tidak ditemukan dalam sistem";
+                    
+                    toast.error(errorMessage);
+                    
+                    // Clear auto-fillable fields tapi keep scanned code
                     setData((prev) => ({
                         ...prev,
                         product_id: "",
-                        supplier_id: "",
                         quantity: "",
                         purchase_transaction_id: "",
                     }));
+                })
+                .finally(() => {
+                    setIsProcessingAutofill(false);
                 });
+        } else if (data.code === "") {
+            prevCodeRef.current = "";
         }
-    }, [data.code, suppliers]);
+    }, [data.code, setData]);
 
     // QR Scanner
     useEffect(() => {
@@ -132,20 +125,19 @@ export default function StockInCreate({ auth, products, suppliers }) {
         return () => {
             scanner.clear().catch((error) => console.error(error));
         };
-    }, []);
+    }, [setData]);
 
     return (
         <Layout user={auth.user}>
-            <Head title="Record Stock In" />
+            <Head title="Catat Barang Masuk" />
 
             <div className="py-6">
                 <div className="max-w-3xl mx-auto sm:px-6 lg:px-8">
                     <Card>
                         <CardHeader>
-                            <CardTitle>Stock In Details</CardTitle>
+                            <CardTitle>Detail Stock Masuk</CardTitle>
                             <CardDescription>
-                                Enter the details for the incoming stock
-                                transaction.
+                                Masukkan detail untuk transaksi barang masuk.
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
@@ -156,18 +148,22 @@ export default function StockInCreate({ auth, products, suppliers }) {
                                 {/* Code Scanner */}
                                 <div className="col-span-2">
                                     <Label htmlFor="code">
-                                        Scan Barcode / Input Code
+                                        Pindai Barcode / Input Kode
+                                        {isProcessingAutofill && (
+                                            <span className="ml-2 text-sm text-blue-600">
+                                                (Memproses...)
+                                            </span>
+                                        )}
                                     </Label>
                                     <Input
                                         id="code"
                                         type="text"
                                         name="code"
                                         value={data.code}
-                                        onChange={(e) =>
-                                            setData("code", e.target.value)
-                                        }
-                                        placeholder="Scan barcode di sini"
+                                        onChange={(e) => setData("code", e.target.value)}
+                                        placeholder="Pindai barcode di sini"
                                         autoFocus
+                                        disabled={isProcessingAutofill}
                                     />
                                     <InputError
                                         message={errors.code}
@@ -183,7 +179,7 @@ export default function StockInCreate({ auth, products, suppliers }) {
 
                                 {/* Product */}
                                 <div className="col-span-2">
-                                    <Label htmlFor="product_id">Product</Label>
+                                    <Label htmlFor="product_id">Produk</Label>
                                     <Select
                                         onValueChange={(value) =>
                                             setData("product_id", value)
@@ -191,7 +187,7 @@ export default function StockInCreate({ auth, products, suppliers }) {
                                         value={data.product_id || ""}
                                     >
                                         <SelectTrigger className="w-full">
-                                            <SelectValue placeholder="Select a product" />
+                                            <SelectValue placeholder="Pilih produk" />
                                         </SelectTrigger>
                                         <SelectContent>
                                             {products.map((product) => (
@@ -199,8 +195,7 @@ export default function StockInCreate({ auth, products, suppliers }) {
                                                     key={product.id}
                                                     value={String(product.id)}
                                                 >
-                                                    {product.name} (Stock:{" "}
-                                                    {product.current_stock})
+                                                    {product.name} (Stok: {product.current_stock})
                                                 </SelectItem>
                                             ))}
                                         </SelectContent>
@@ -213,7 +208,7 @@ export default function StockInCreate({ auth, products, suppliers }) {
 
                                 {/* Quantity */}
                                 <div>
-                                    <Label htmlFor="quantity">Quantity</Label>
+                                    <Label htmlFor="quantity">Jumlah</Label>
                                     <Input
                                         id="quantity"
                                         type="number"
@@ -223,6 +218,7 @@ export default function StockInCreate({ auth, products, suppliers }) {
                                             setData("quantity", e.target.value)
                                         }
                                         min="1"
+                                        placeholder="Masukkan jumlah"
                                     />
                                     <InputError
                                         message={errors.quantity}
@@ -230,66 +226,9 @@ export default function StockInCreate({ auth, products, suppliers }) {
                                     />
                                 </div>
 
-                                {/* Supplier */}
-                                <div>
-                                    <Label htmlFor="supplier_id">
-                                        Supplier
-                                    </Label>
-                                    <Select
-                                        onValueChange={(value) =>
-                                            setData("supplier_id", value)
-                                        }
-                                        value={data.supplier_id || ""}
-                                    >
-                                        <SelectTrigger className="w-full">
-                                            <SelectValue placeholder="Select a supplier" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {suppliers.map((supplier) => (
-                                                <SelectItem
-                                                    key={supplier.id}
-                                                    value={String(supplier.id)}
-                                                >
-                                                    {supplier.name}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                    <InputError
-                                        message={errors.supplier_id}
-                                        className="mt-2"
-                                    />
-                                </div>
-
-                                {/* Supplier Name (Auto) */}
-                                {supplierName && (
-                                    <div>
-                                        <Label>Supplier Name (Auto)</Label>
-                                        <Input
-                                            value={supplierName}
-                                            readOnly
-                                            className="bg-gray-100 cursor-not-allowed"
-                                        />
-                                    </div>
-                                )}
-
-                                {/* Supplier Phone (Auto) */}
-                                {supplierPhone && (
-                                    <div>
-                                        <Label>Supplier Phone (Auto)</Label>
-                                        <Input
-                                            value={supplierPhone}
-                                            readOnly
-                                            className="bg-gray-100 cursor-not-allowed"
-                                        />
-                                    </div>
-                                )}
-
                                 {/* Stock In Date */}
                                 <div>
-                                    <Label htmlFor="stockin_date">
-                                        Stock In Date
-                                    </Label>
+                                    <Label htmlFor="stockin_date">Tanggal Masuk</Label>
                                     <Popover>
                                         <PopoverTrigger asChild>
                                             <Button
@@ -303,12 +242,11 @@ export default function StockInCreate({ auth, products, suppliers }) {
                                                 <CalendarIcon className="mr-2 h-4 w-4" />
                                                 {data.stockin_date
                                                     ? format(
-                                                          new Date(
-                                                              data.stockin_date
-                                                          ),
-                                                          "PPP"
+                                                          new Date(data.stockin_date),
+                                                          "dd MMMM yyyy",
+                                                          { locale: localeId }
                                                       )
-                                                    : "Pick a date"}
+                                                    : "Pilih tanggal"}
                                             </Button>
                                         </PopoverTrigger>
                                         <PopoverContent className="w-auto p-0">
@@ -316,21 +254,17 @@ export default function StockInCreate({ auth, products, suppliers }) {
                                                 mode="single"
                                                 selected={
                                                     data.stockin_date
-                                                        ? new Date(
-                                                              data.stockin_date
-                                                          )
+                                                        ? new Date(data.stockin_date)
                                                         : undefined
                                                 }
                                                 onSelect={(date) =>
                                                     setData(
                                                         "stockin_date",
-                                                        format(
-                                                            date,
-                                                            "yyyy-MM-dd"
-                                                        )
+                                                        format(date, "yyyy-MM-dd")
                                                     )
                                                 }
                                                 initialFocus
+                                                locale={localeId}
                                             />
                                         </PopoverContent>
                                     </Popover>
@@ -341,8 +275,8 @@ export default function StockInCreate({ auth, products, suppliers }) {
                                 </div>
 
                                 {/* Source */}
-                                <div>
-                                    <Label htmlFor="source">Sumber</Label>
+                                <div className="col-span-2">
+                                    <Label htmlFor="source">Sumber Stock In</Label>
                                     <Select
                                         onValueChange={(value) =>
                                             setData("source", value)
@@ -350,17 +284,20 @@ export default function StockInCreate({ auth, products, suppliers }) {
                                         value={data.source || ""}
                                     >
                                         <SelectTrigger className="w-full">
-                                            <SelectValue placeholder="Pilih sumber" />
+                                            <SelectValue placeholder="Pilih sumber stock in" />
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="Purchase Transaction">
-                                                Purchase Transaction
+                                                Transaksi Pembelian
                                             </SelectItem>
                                             <SelectItem value="Retur">
-                                                Retur
+                                                Retur Barang
+                                            </SelectItem>
+                                            <SelectItem value="Transfer Masuk">
+                                                Transfer Masuk
                                             </SelectItem>
                                             <SelectItem value="Penyesuaian">
-                                                Penyesuaian
+                                                Penyesuaian Stok
                                             </SelectItem>
                                             <SelectItem value="Lainnya">
                                                 Lainnya
@@ -373,18 +310,41 @@ export default function StockInCreate({ auth, products, suppliers }) {
                                     />
                                 </div>
 
+                                {/* Purchase Transaction ID - Optional field */}
+                                {data.source === "Purchase Transaction" && (
+                                    <div className="col-span-2">
+                                        <Label htmlFor="purchase_transaction_id">
+                                            ID Transaksi Pembelian (Opsional)
+                                        </Label>
+                                        <Input
+                                            id="purchase_transaction_id"
+                                            type="text"
+                                            name="purchase_transaction_id"
+                                            value={data.purchase_transaction_id}
+                                            onChange={(e) =>
+                                                setData("purchase_transaction_id", e.target.value)
+                                            }
+                                            placeholder="Masukkan ID transaksi pembelian jika ada"
+                                        />
+                                        <InputError
+                                            message={errors.purchase_transaction_id}
+                                            className="mt-2"
+                                        />
+                                    </div>
+                                )}
+
                                 {/* Actions */}
                                 <div className="col-span-2 flex justify-end mt-6 gap-2">
                                     <Link href={route("stock-ins.index")}>
                                         <Button type="button" variant="outline">
-                                            Cancel
+                                            Batal
                                         </Button>
                                     </Link>
                                     <Button
                                         disabled={processing}
                                         className="bg-green-800 hover:bg-green-900"
                                     >
-                                        Record Stock In
+                                        Catat Barang Masuk
                                     </Button>
                                 </div>
                             </form>

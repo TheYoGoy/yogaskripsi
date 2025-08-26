@@ -27,55 +27,149 @@ class ProductController extends Controller
      */
     public function index(Request $request)
     {
-        $filters = $request->only([
-            'search',
-            'category_id',
-            'supplier_id',
-            'unit_id',
-            'per_page',
-            'sort_by',
-            'sort_direction',
-            'page',
-        ]);
+        try {
+            Log::info('Product index request', [
+                'user_id' => Auth::id(),
+                'filters' => $request->all()
+            ]);
 
-        $perPage = $filters['per_page'] ?? 10;
-        $sortBy = $filters['sort_by'] ?? 'name';
-        $sortDirection = $filters['sort_direction'] ?? 'asc';
+            $filters = $request->only([
+                'search',
+                'category_id',
+                'supplier_id',
+                'unit_id',
+                'per_page',
+                'sort_by',
+                'sort_direction',
+                'page',
+                'created_date',
+            ]);
 
-        $validSortColumns = ['name', 'sku', 'current_stock', 'minimum_stock', 'price', 'created_at'];
-        if (!in_array($sortBy, $validSortColumns)) {
-            $sortBy = 'name';
+            $perPage = $filters['per_page'] ?? 10;
+            $sortBy = $filters['sort_by'] ?? 'created_at';
+            $sortDirection = $filters['sort_direction'] ?? 'desc';
+
+            // Validasi sort columns
+            $validSortColumns = ['name', 'sku', 'code', 'current_stock', 'price', 'created_at'];
+            if (!in_array($sortBy, $validSortColumns)) {
+                $sortBy = 'created_at';
+            }
+            if (!in_array($sortDirection, ['asc', 'desc'])) {
+                $sortDirection = 'desc';
+            }
+
+            // Build query dengan proper eager loading
+            $query = Product::with(['category:id,name', 'unit:id,name,symbol', 'supplier:id,name'])
+                ->select([
+                    'products.id',
+                    'products.code',
+                    'products.sku', 
+                    'products.name',
+                    'products.description',
+                    'products.category_id',
+                    'products.unit_id',
+                    'products.supplier_id',
+                    'products.current_stock',
+                    'products.price',
+                    'products.lead_time',
+                    'products.daily_usage_rate',
+                    'products.created_at',
+                    'products.updated_at'
+                ]);
+
+            // Apply search filter
+            if (!empty($filters['search'])) {
+                $search = $filters['search'];
+                $query->where(function ($q) use ($search) {
+                    $q->where('products.name', 'like', "%$search%")
+                      ->orWhere('products.sku', 'like', "%$search%")
+                      ->orWhere('products.code', 'like', "%$search%")
+                      ->orWhere('products.description', 'like', "%$search%");
+                });
+            }
+
+            // Apply category filter
+            if (!empty($filters['category_id']) && $filters['category_id'] !== 'all') {
+                $query->where('products.category_id', $filters['category_id']);
+            }
+
+            // Apply unit filter
+            if (!empty($filters['unit_id']) && $filters['unit_id'] !== 'all') {
+                $query->where('products.unit_id', $filters['unit_id']);
+            }
+
+            // Apply supplier filter
+            if (!empty($filters['supplier_id']) && $filters['supplier_id'] !== 'all') {
+                $query->where('products.supplier_id', $filters['supplier_id']);
+            }
+
+            // Apply date filter
+            if (!empty($filters['created_date'])) {
+                try {
+                    // Convert DD-MM-YYYY to Y-m-d
+                    $date = \DateTime::createFromFormat('d-m-Y', $filters['created_date']);
+                    if ($date) {
+                        $query->whereDate('products.created_at', $date->format('Y-m-d'));
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('Invalid date format in product filter', [
+                        'date' => $filters['created_date'],
+                        'error' => $e->getMessage()
+                    ]);
+                }
+            }
+
+            // Apply sorting
+            $query->orderBy("products.$sortBy", $sortDirection);
+
+            // Execute query with pagination
+            $products = $query->paginate($perPage)->withQueryString();
+
+            // Get dropdown data
+            $categories = Category::select('id', 'name')->orderBy('name')->get();
+            $units = Unit::select('id', 'name', 'symbol')->orderBy('name')->get();
+            $suppliers = Supplier::select('id', 'name')->orderBy('name')->get();
+
+            Log::info('Product query result', [
+                'total' => $products->total(),
+                'per_page' => $products->perPage(),
+                'current_page' => $products->currentPage(),
+                'data_count' => $products->count(),
+                'categories_count' => $categories->count(),
+                'units_count' => $units->count(),
+                'suppliers_count' => $suppliers->count()
+            ]);
+
+            return Inertia::render('Products/Index', [
+                'products' => $products,
+                'filters' => $filters,
+                'categories' => $categories,
+                'units' => $units,
+                'suppliers' => $suppliers,
+                'flash' => [
+                    'success' => session('success'),
+                    'error' => session('error'),
+                ],
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error in product index', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'user_id' => Auth::id()
+            ]);
+
+            return Inertia::render('Products/Index', [
+                'products' => collect()->paginate(),
+                'filters' => $filters ?? [],
+                'categories' => collect(),
+                'units' => collect(),
+                'suppliers' => collect(),
+                'flash' => [
+                    'error' => 'Terjadi kesalahan saat memuat data produk. Silakan refresh halaman.'
+                ],
+            ]);
         }
-        if (!in_array($sortDirection, ['asc', 'desc'])) {
-            $sortDirection = 'asc';
-        }
-
-        $products = Product::with(['category', 'unit', 'supplier'])
-            ->when($filters['search'] ?? null, function ($query, $search) {
-                $query->where('name', 'like', "%$search%")
-                    ->orWhere('sku', 'like', "%$search%")
-                    ->orWhere('code', 'like', "%$search%")
-                    ->orWhere('barcode', 'like', "%$search%")
-                    ->orWhere('description', 'like', "%$search%");
-            })
-            ->when($filters['category_id'] ?? null, fn($q, $categoryId) => $q->where('category_id', $categoryId))
-            ->when($filters['supplier_id'] ?? null, fn($q, $supplierId) => $q->where('supplier_id', $supplierId))
-            ->when($filters['unit_id'] ?? null, fn($q, $unitId) => $q->where('unit_id', $unitId))
-            ->orderBy($sortBy, $sortDirection)
-            ->paginate($perPage)
-            ->withQueryString();
-
-        return Inertia::render('Products/Index', [
-            'products' => $products,
-            'filters' => $filters,
-            'categories' => Category::select('id', 'name')->get(),
-            'suppliers' => Supplier::select('id', 'name')->get(),
-            'units' => Unit::select('id', 'name')->get(),
-            'flash' => [
-                'success' => session('success'),
-                'error' => session('error'),
-            ],
-        ]);
     }
 
     /**
@@ -83,10 +177,14 @@ class ProductController extends Controller
      */
     public function create()
     {
+        $categories = Category::select('id', 'name')->orderBy('name')->get();
+        $units = Unit::select('id', 'name', 'symbol')->orderBy('name')->get();
+        $suppliers = Supplier::select('id', 'name')->orderBy('name')->get();
+
         return Inertia::render('Products/Create', [
-            'categories' => Category::all(),
-            'units' => Unit::all(),
-            'suppliers' => Supplier::all(),
+            'categories' => $categories,
+            'units' => $units,
+            'suppliers' => $suppliers,
         ]);
     }
 
@@ -95,33 +193,42 @@ class ProductController extends Controller
      */
     public function store(Request $request)
     {
+        Log::info('Product store request', [
+            'user_id' => Auth::id(),
+            'data' => $request->except(['_token'])
+        ]);
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'sku' => 'required|string|max:100|unique:products,sku',
             'code' => 'nullable|string|max:100|unique:products,code',
-            'barcode' => 'nullable|string|max:100|unique:products,barcode',
             'description' => 'nullable|string|max:1000',
             'category_id' => 'required|exists:categories,id',
             'unit_id' => 'required|exists:units,id',
-            'supplier_id' => 'required|exists:suppliers,id',
-            'current_stock' => 'required|integer|min:0',
-            'minimum_stock' => 'required|integer|min:0',
-            'maximum_stock' => 'nullable|integer|min:0',
+            'supplier_id' => 'nullable|exists:suppliers,id',
             'price' => 'required|numeric|min:0',
-            'cost' => 'nullable|numeric|min:0',
-            'location' => 'nullable|string|max:255',
-            'notes' => 'nullable|string|max:1000',
+            'lead_time' => 'nullable|integer|min:1',
+            'current_stock' => 'nullable|integer|min:0',
+            'daily_usage_rate' => 'nullable|numeric|min:0',
         ]);
 
         try {
-            $product = Product::create([
-                ...$validated,
-                'user_id' => Auth::id(),
+            // Set default values
+            $validated['current_stock'] = $validated['current_stock'] ?? 0;
+            $validated['lead_time'] = $validated['lead_time'] ?? 7;
+            $validated['daily_usage_rate'] = $validated['daily_usage_rate'] ?? 0.5;
+
+            $product = Product::create($validated);
+
+            Log::info('Product created successfully', [
+                'product_id' => $product->id,
+                'user_id' => Auth::id()
             ]);
 
             return redirect()
                 ->route('products.index')
-                ->with('success', 'Product created successfully.');
+                ->with('success', "Produk '{$product->name}' berhasil ditambahkan.");
+
         } catch (\Exception $e) {
             Log::error('Error creating product', [
                 'user_id' => Auth::id(),
@@ -131,19 +238,37 @@ class ProductController extends Controller
 
             return back()
                 ->withInput()
-                ->with('error', 'Failed to create product. Please try again.');
+                ->with('error', 'Gagal menambahkan produk. Silakan coba lagi.');
         }
     }
 
     /**
-     * Display the specified resource.
+     * ✅ FIXED: Display the specified resource.
      */
     public function show(Product $product)
     {
-        $product->load(['category', 'unit', 'supplier', 'user']);
+        $product->load(['category', 'unit', 'supplier']);
+        
+        // ✅ FIXED: Calculate dan assign sebagai properti terpisah
+        $product->rop = $product->calculateRop();
+        $product->eoq = $product->calculateEoq();
+        
+        // ✅ FIXED: Ambil reorder status dan extract message untuk frontend
+        $reorderStatus = $product->getReorderStatus();
+        $product->reorder_status_message = $reorderStatus['message'];
+        $product->reorder_status_color = $reorderStatus['color'];
+        $product->reorder_status_urgent = $reorderStatus['urgent'];
+
+        // ✅ FIXED: Juga pass categories, units, suppliers untuk edit modal
+        $categories = Category::select('id', 'name')->orderBy('name')->get();
+        $units = Unit::select('id', 'name', 'symbol')->orderBy('name')->get();
+        $suppliers = Supplier::select('id', 'name')->orderBy('name')->get();
 
         return Inertia::render('Products/Show', [
             'product' => $product,
+            'categories' => $categories,
+            'units' => $units,
+            'suppliers' => $suppliers,
         ]);
     }
 
@@ -152,11 +277,17 @@ class ProductController extends Controller
      */
     public function edit(Product $product)
     {
+        $product->load(['category', 'unit', 'supplier']);
+        
+        $categories = Category::select('id', 'name')->orderBy('name')->get();
+        $units = Unit::select('id', 'name', 'symbol')->orderBy('name')->get();
+        $suppliers = Supplier::select('id', 'name')->orderBy('name')->get();
+
         return Inertia::render('Products/Edit', [
-            'product' => $product->load(['category', 'unit', 'supplier']),
-            'categories' => Category::all(),
-            'units' => Unit::all(),
-            'suppliers' => Supplier::all(),
+            'product' => $product,
+            'categories' => $categories,
+            'units' => $units,
+            'suppliers' => $suppliers,
         ]);
     }
 
@@ -165,30 +296,38 @@ class ProductController extends Controller
      */
     public function update(Request $request, Product $product)
     {
+        Log::info('Product update request', [
+            'product_id' => $product->id,
+            'user_id' => Auth::id(),
+            'data' => $request->except(['_token', '_method'])
+        ]);
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'sku' => 'required|string|max:100|unique:products,sku,' . $product->id,
             'code' => 'nullable|string|max:100|unique:products,code,' . $product->id,
-            'barcode' => 'nullable|string|max:100|unique:products,barcode,' . $product->id,
             'description' => 'nullable|string|max:1000',
             'category_id' => 'required|exists:categories,id',
             'unit_id' => 'required|exists:units,id',
-            'supplier_id' => 'required|exists:suppliers,id',
-            'current_stock' => 'required|integer|min:0',
-            'minimum_stock' => 'required|integer|min:0',
-            'maximum_stock' => 'nullable|integer|min:0',
+            'supplier_id' => 'nullable|exists:suppliers,id',
             'price' => 'required|numeric|min:0',
-            'cost' => 'nullable|numeric|min:0',
-            'location' => 'nullable|string|max:255',
-            'notes' => 'nullable|string|max:1000',
+            'lead_time' => 'nullable|integer|min:1',
+            'current_stock' => 'nullable|integer|min:0',
+            'daily_usage_rate' => 'nullable|numeric|min:0',
         ]);
 
         try {
             $product->update($validated);
 
+            Log::info('Product updated successfully', [
+                'product_id' => $product->id,
+                'user_id' => Auth::id()
+            ]);
+
             return redirect()
                 ->route('products.index')
-                ->with('success', 'Product updated successfully.');
+                ->with('success', "Produk '{$product->name}' berhasil diperbarui.");
+
         } catch (\Exception $e) {
             Log::error('Error updating product', [
                 'product_id' => $product->id,
@@ -198,7 +337,7 @@ class ProductController extends Controller
 
             return back()
                 ->withInput()
-                ->with('error', 'Failed to update product. Please try again.');
+                ->with('error', 'Gagal memperbarui produk. Silakan coba lagi.');
         }
     }
 
@@ -211,9 +350,15 @@ class ProductController extends Controller
             $productName = $product->name;
             $product->delete();
 
+            Log::info('Product deleted successfully', [
+                'product_name' => $productName,
+                'user_id' => Auth::id()
+            ]);
+
             return redirect()
                 ->route('products.index')
-                ->with('success', "Product '{$productName}' has been deleted successfully.");
+                ->with('success', "Produk '{$productName}' berhasil dihapus.");
+
         } catch (\Exception $e) {
             Log::error('Error deleting product', [
                 'product_id' => $product->id,
@@ -221,7 +366,7 @@ class ProductController extends Controller
                 'error' => $e->getMessage()
             ]);
 
-            return back()->with('error', 'Failed to delete product.');
+            return back()->with('error', 'Gagal menghapus produk. Silakan coba lagi.');
         }
     }
 
@@ -239,7 +384,14 @@ class ProductController extends Controller
             $count = Product::whereIn('id', $request->ids)->count();
             Product::whereIn('id', $request->ids)->delete();
 
-            return back()->with('success', "{$count} products have been deleted successfully.");
+            Log::info('Bulk delete products', [
+                'count' => $count,
+                'ids' => $request->ids,
+                'user_id' => Auth::id()
+            ]);
+
+            return back()->with('success', "{$count} produk berhasil dihapus.");
+
         } catch (\Exception $e) {
             Log::error('Error bulk deleting products', [
                 'ids' => $request->ids,
@@ -247,23 +399,23 @@ class ProductController extends Controller
                 'error' => $e->getMessage()
             ]);
 
-            return back()->with('error', 'Failed to delete selected products.');
+            return back()->with('error', 'Gagal menghapus produk terpilih. Silakan coba lagi.');
         }
     }
 
     /**
      * Generate unique product code.
      */
-    public function generateCode()
+    public function generateCode(): JsonResponse
     {
         try {
             // Get the latest product code
             $latestProduct = Product::whereNotNull('code')
-                ->where('code', 'regexp', '^PRD-[0-9]{6}$')
-                ->latest('id')
+                ->where('code', 'like', 'PRD-%')
+                ->orderBy('code', 'desc')
                 ->first();
 
-            if ($latestProduct && preg_match('/PRD-(\d{6})/', $latestProduct->code, $matches)) {
+            if ($latestProduct && preg_match('/PRD-(\d+)/', $latestProduct->code, $matches)) {
                 $nextNumber = intval($matches[1]) + 1;
             } else {
                 $nextNumber = 1;
@@ -277,188 +429,188 @@ class ProductController extends Controller
                 $code = 'PRD-' . str_pad($nextNumber, 6, '0', STR_PAD_LEFT);
             }
 
+            Log::info('Generated product code', [
+                'code' => $code,
+                'user_id' => Auth::id()
+            ]);
+
             return response()->json([
                 'success' => true,
-                'code' => $code
+                'code' => $code,
+                'generatedCode' => $code,
             ]);
+
         } catch (\Exception $e) {
             Log::error('Error generating product code', [
-                'error' => $e->getMessage()
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to generate product code'
-            ], 500);
-        }
-    }
-
-    /**
-     * ✅ TAMBAHAN: Search product by barcode/code - UNTUK SCAN BARCODE
-     * 
-     * @param string $code
-     * @return JsonResponse
-     */
-    public function searchByCode(Request $request): JsonResponse
-    {
-        try {
-            // Ambil code dari query parameter atau route parameter
-            $code = $request->get('code') ?? $request->route('code');
-
-            // Clean the code input
-            $cleanCode = trim($code);
-
-            if (empty($cleanCode)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Code parameter is required',
-                    'product' => null
-                ], 400);
-            }
-
-            // Search product by multiple code fields
-            $product = Product::with(['supplier', 'category', 'unit'])
-                ->where(function ($query) use ($cleanCode) {
-                    $query->where('code', $cleanCode)
-                        ->orWhere('barcode', $cleanCode)
-                        ->orWhere('sku', $cleanCode);
-                })
-                ->first();
-
-            if (!$product) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Product not found for this code',
-                    'product' => null
-                ], 404);
-            }
-
-            // Return response yang sesuai dengan yang diharapkan React
-            return response()->json([
-                'success' => true,
-                'message' => 'Product found successfully',
-                'product' => [
-                    'id' => $product->id,
-                    'name' => $product->name,
-                    'sku' => $product->sku,
-                    'code' => $product->code,
-                    'barcode' => $product->barcode,
-                    'description' => $product->description,
-                    'supplier_id' => $product->supplier_id,
-                    'category_id' => $product->category_id,
-                    'unit_id' => $product->unit_id,
-                    'current_stock' => $product->current_stock,
-                    'minimum_stock' => $product->minimum_stock,
-                    'maximum_stock' => $product->maximum_stock,
-                    'price' => $product->price,
-                    'cost' => $product->cost,
-                    'location' => $product->location,
-                    'supplier' => $product->supplier ? [
-                        'id' => $product->supplier->id,
-                        'name' => $product->supplier->name,
-                        'phone' => $product->supplier->phone ?? null,
-                        'email' => $product->supplier->email ?? null,
-                        'address' => $product->supplier->address ?? null,
-                    ] : null,
-                    'category' => $product->category ? [
-                        'id' => $product->category->id,
-                        'name' => $product->category->name,
-                    ] : null,
-                    'unit' => $product->unit ? [
-                        'id' => $product->unit->id,
-                        'name' => $product->unit->name,
-                        'symbol' => $product->unit->symbol ?? null,
-                    ] : null
-                ]
-            ], 200);
-        } catch (\Exception $e) {
-            Log::error('Error searching product by code', [
-                'code' => $code ?? 'N/A',
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'user_id' => Auth::id()
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'An error occurred while searching for the product',
-                'product' => null
+                'message' => 'Gagal menggenerate kode produk.',
+                'error' => $e->getMessage()
             ], 500);
         }
-    }
-
-    /**
-     * Show barcode for the product.
-     */
-    public function showBarcode(Product $product)
-    {
-        $this->authorize('view', $product);
-
-        return Inertia::render('Products/Barcode', [
-            'product' => $product,
-        ]);
     }
 
     /**
      * Generate barcode SVG for the product.
      */
-    public function generateBarcode(Product $product)
+    public function generateBarcode(Product $product): JsonResponse
     {
         try {
             $this->authorize('view', $product);
 
-            $codeToEncode = $product->barcode ?: $product->code ?: $product->sku;
+            $codeToEncode = $product->code ?: $product->sku;
 
             if (!$codeToEncode) {
-                return response()->json(['error' => 'No code available for barcode generation'], 400);
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Tidak ada kode untuk generate barcode'
+                ], 400);
             }
 
             $barcode = DNS1D::getBarcodeSVG($codeToEncode, 'C128', 2, 100);
 
             return response()->json([
+                'success' => true,
                 'svg' => $barcode,
+                'barcode' => $barcode,
                 'code' => $codeToEncode,
                 'product_name' => $product->name
             ]);
+
         } catch (\Exception $e) {
             Log::error('Error generating barcode', [
                 'product_id' => $product->id,
                 'error' => $e->getMessage()
             ]);
 
-            return response()->json(['error' => 'Failed to generate barcode'], 500);
+            return response()->json([
+                'success' => false,
+                'error' => 'Gagal generate barcode'
+            ], 500);
         }
     }
 
     /**
-     * Download barcode QR for the product.
+     * Route alias for barcode generation
+     */
+    public function barcode(Product $product)
+    {
+        return $this->generateBarcode($product);
+    }
+
+    /**
+     * ✅ OPTION 1: Download Linear Barcode (sama dengan yang ditampilkan)
      */
     public function downloadBarcode(Product $product)
     {
         try {
             $this->authorize('view', $product);
 
-            $codeToEncode = $product->barcode ?: $product->code ?: $product->sku;
+            $codeToEncode = $product->code ?: $product->sku;
 
             if (!$codeToEncode) {
-                return back()->with('error', 'No code available for barcode generation.');
+                return back()->with('error', 'Tidak ada kode untuk generate barcode.');
             }
 
-            $svg = QrCode::format('svg')
-                ->size(300)
-                ->generate($codeToEncode);
+            // Generate Linear Barcode SVG untuk download
+            $svg = DNS1D::getBarcodeSVG($codeToEncode, 'C128', 3, 120);
 
-            $filename = "qr_product_" . preg_replace('/[^A-Za-z0-9\-_]/', '_', $product->sku) . ".svg";
+            $filename = "barcode_" . preg_replace('/[^A-Za-z0-9\-_]/', '_', $product->sku) . ".svg";
 
             return response($svg)
                 ->header('Content-Type', 'image/svg+xml')
                 ->header('Content-Disposition', 'attachment; filename="' . $filename . '"');
+
         } catch (\Exception $e) {
             Log::error('Error downloading barcode', [
                 'product_id' => $product->id,
                 'error' => $e->getMessage()
             ]);
 
-            return back()->with('error', 'Failed to download QR code.');
+            return back()->with('error', 'Gagal download barcode.');
+        }
+    }
+
+    /**
+     * ✅ OPTION 2: Tambah method terpisah untuk QR Code
+     */
+    public function generateQrCode(Product $product): JsonResponse
+    {
+        try {
+            $this->authorize('view', $product);
+
+            $codeToEncode = $product->code ?: $product->sku;
+
+            if (!$codeToEncode) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Tidak ada kode untuk generate QR code'
+                ], 400);
+            }
+
+            // Generate QR Code
+            $qrCode = QrCode::format('svg')
+                ->size(200)
+                ->generate($codeToEncode);
+
+            return response()->json([
+                'success' => true,
+                'svg' => $qrCode,
+                'qrcode' => $qrCode,
+                'code' => $codeToEncode,
+                'product_name' => $product->name,
+                'type' => 'qr_code'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error generating QR code', [
+                'product_id' => $product->id,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Gagal generate QR code'
+            ], 500);
+        }
+    }
+
+    /**
+     * ✅ OPTION 2: Download QR Code
+     */
+    public function downloadQrCode(Product $product)
+    {
+        try {
+            $this->authorize('view', $product);
+
+            $codeToEncode = $product->code ?: $product->sku;
+
+            if (!$codeToEncode) {
+                return back()->with('error', 'Tidak ada kode untuk generate QR code.');
+            }
+
+            // Generate QR Code SVG untuk download
+            $svg = QrCode::format('svg')
+                ->size(300)
+                ->generate($codeToEncode);
+
+            $filename = "qr_" . preg_replace('/[^A-Za-z0-9\-_]/', '_', $product->sku) . ".svg";
+
+            return response($svg)
+                ->header('Content-Type', 'image/svg+xml')
+                ->header('Content-Disposition', 'attachment; filename="' . $filename . '"');
+
+        } catch (\Exception $e) {
+            Log::error('Error downloading QR code', [
+                'product_id' => $product->id,
+                'error' => $e->getMessage()
+            ]);
+
+            return back()->with('error', 'Gagal download QR code.');
         }
     }
 }
