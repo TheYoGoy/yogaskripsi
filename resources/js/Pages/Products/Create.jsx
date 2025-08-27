@@ -32,7 +32,10 @@ export default function ProductCreate({
         price: "",
         lead_time: "7",
         current_stock: "0",
+        minimum_stock: "10",
         daily_usage_rate: "0.5",
+        holding_cost_percentage: "0.2",
+        ordering_cost: "25000",
     });
 
     // Update code when generatedCode changes
@@ -254,11 +257,11 @@ export default function ProductCreate({
                 <div className="space-y-4">
                     <h4 className="text-md font-medium text-gray-900 border-b pb-2">Harga & Stok</h4>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         {/* Price */}
                         <div>
                             <Label htmlFor="price">
-                                Harga Jual (Rp) <span className="text-red-500">*</span>
+                                Harga Beli (Rp) <span className="text-red-500">*</span>
                             </Label>
                             <Input
                                 id="price"
@@ -271,6 +274,7 @@ export default function ProductCreate({
                                 className="mt-1"
                             />
                             <InputError message={errors.price} className="mt-1" />
+                            <p className="text-xs text-gray-500 mt-1">Harga beli dari supplier</p>
                         </div>
 
                         {/* Current Stock */}
@@ -287,12 +291,31 @@ export default function ProductCreate({
                             />
                             <InputError message={errors.current_stock} className="mt-1" />
                         </div>
+
+                        {/* Minimum Stock */}
+                        <div>
+                            <Label htmlFor="minimum_stock">Safety Stock</Label>
+                            <Input
+                                id="minimum_stock"
+                                type="number"
+                                min="0"
+                                value={data.minimum_stock}
+                                onChange={(e) => setData("minimum_stock", e.target.value)}
+                                placeholder="10"
+                                className="mt-1"
+                            />
+                            <InputError message={errors.minimum_stock} className="mt-1" />
+                            <p className="text-xs text-gray-500 mt-1">Stok minimum untuk keamanan</p>
+                        </div>
                     </div>
                 </div>
 
-                {/* Inventory Parameters */}
+                {/* EOQ & ROP Parameters */}
                 <div className="space-y-4">
-                    <h4 className="text-md font-medium text-gray-900 border-b pb-2">Parameter Inventory</h4>
+                    <div className="border-b pb-2">
+                        <h4 className="text-md font-medium text-gray-900">Parameter EOQ & ROP</h4>
+                        <p className="text-sm text-gray-500">Parameter untuk perhitungan Economic Order Quantity dan Reorder Point</p>
+                    </div>
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {/* Lead Time */}
@@ -304,6 +327,7 @@ export default function ProductCreate({
                                 id="lead_time"
                                 type="number"
                                 min="1"
+                                max="365"
                                 value={data.lead_time}
                                 onChange={(e) => setData("lead_time", e.target.value)}
                                 placeholder="7"
@@ -315,7 +339,7 @@ export default function ProductCreate({
 
                         {/* Daily Usage Rate */}
                         <div>
-                            <Label htmlFor="daily_usage_rate">Rata-rata Pemakaian Harian</Label>
+                            <Label htmlFor="daily_usage_rate">Penggunaan Harian</Label>
                             <Input
                                 id="daily_usage_rate"
                                 type="number"
@@ -327,7 +351,54 @@ export default function ProductCreate({
                                 className="mt-1"
                             />
                             <InputError message={errors.daily_usage_rate} className="mt-1" />
-                            <p className="text-xs text-gray-500 mt-1">Unit per hari (untuk perhitungan ROP & EOQ)</p>
+                            <p className="text-xs text-gray-500 mt-1">Rata-rata penggunaan per hari (unit/hari)</p>
+                        </div>
+
+                        {/* Holding Cost Percentage */}
+                        <div>
+                            <Label htmlFor="holding_cost_percentage">Biaya Penyimpanan (%)</Label>
+                            <Input
+                                id="holding_cost_percentage"
+                                type="number"
+                                min="0"
+                                max="1"
+                                step="0.01"
+                                value={data.holding_cost_percentage}
+                                onChange={(e) => setData("holding_cost_percentage", e.target.value)}
+                                placeholder="0.2"
+                                className="mt-1"
+                            />
+                            <InputError message={errors.holding_cost_percentage} className="mt-1" />
+                            <p className="text-xs text-gray-500 mt-1">Contoh: 0.2 = 20% dari harga beli per tahun</p>
+                        </div>
+
+                        {/* Ordering Cost */}
+                        <div>
+                            <Label htmlFor="ordering_cost">Biaya Pemesanan (Rp)</Label>
+                            <Input
+                                id="ordering_cost"
+                                type="number"
+                                min="0"
+                                step="1"
+                                value={data.ordering_cost}
+                                onChange={(e) => setData("ordering_cost", e.target.value)}
+                                placeholder="25000"
+                                className="mt-1"
+                            />
+                            <InputError message={errors.ordering_cost} className="mt-1" />
+                            <p className="text-xs text-gray-500 mt-1">Biaya tetap per order (admin + ongkir)</p>
+                        </div>
+                    </div>
+
+                    {/* EOQ/ROP Info Box */}
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <div className="text-sm text-blue-800">
+                            <h5 className="font-medium mb-2">📊 Informasi Parameter EOQ & ROP:</h5>
+                            <ul className="space-y-1 text-xs">
+                                <li><strong>ROP</strong> = (Lead Time × Penggunaan Harian) + Safety Stock</li>
+                                <li><strong>EOQ</strong> = √((2 × Annual Demand × Biaya Pemesanan) / (Harga Beli × Biaya Penyimpanan))</li>
+                                <li>Parameter ini akan digunakan untuk optimasi inventaris di halaman EOQ-ROP</li>
+                            </ul>
                         </div>
                     </div>
                 </div>

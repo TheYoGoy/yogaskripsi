@@ -53,7 +53,7 @@ export const ApplicationMenu = ({ userRole }) => {
 
     return (
         <SidebarGroup>
-            <SidebarGroupLabel>Application</SidebarGroupLabel>
+            <SidebarGroupLabel>Aplikasi</SidebarGroupLabel>
             <SidebarMenu>
                 {visibleItems.map((item) => (
                     <SidebarMenuItem key={item.name}>

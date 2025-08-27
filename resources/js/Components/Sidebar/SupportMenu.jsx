@@ -36,7 +36,7 @@ export const SupportMenu = ({ userRole }) => {
 
     return (
         <SidebarGroup>
-            <SidebarGroupLabel>Support</SidebarGroupLabel>
+            <SidebarGroupLabel>Laporan & Perhitungan</SidebarGroupLabel>
             <SidebarMenu>
                 {visibleItems.map((item) => (
                     <SidebarMenuItem key={item.name}>

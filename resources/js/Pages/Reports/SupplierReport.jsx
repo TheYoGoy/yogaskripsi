@@ -27,13 +27,13 @@ export default function SupplierReport({ auth, suppliers, filters = {} }) {
     const handleFilter = (e) => {
         e.preventDefault();
 
-        // Validate date range
+        // Validasi rentang tanggal
         if (
             data.start_date &&
             data.end_date &&
             new Date(data.start_date) > new Date(data.end_date)
         ) {
-            alert("Start date cannot be later than end date");
+            alert("Tanggal mulai tidak boleh lebih lambat dari tanggal akhir");
             return;
         }
 
@@ -86,19 +86,19 @@ export default function SupplierReport({ auth, suppliers, filters = {} }) {
             user={auth.user}
             header={
                 <h2 className="font-bold text-3xl text-gray-800 leading-tight">
-                    Supplier Report
+                    Laporan Supplier
                 </h2>
             }
         >
-            <Head title="Supplier Report" />
+            <Head title="Laporan Supplier" />
 
             <div className="py-8">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    {/* Filter Section */}
+                    {/* Bagian Filter */}
                     <Card className="mb-8 p-4 shadow-lg rounded-lg border border-gray-200">
                         <CardHeader className="pb-4">
                             <CardTitle className="text-2xl font-semibold text-gray-700">
-                                Filter Supplier Report
+                                Filter Laporan Supplier
                             </CardTitle>
                         </CardHeader>
                         <CardContent>
@@ -108,11 +108,11 @@ export default function SupplierReport({ auth, suppliers, filters = {} }) {
                             >
                                 <div className="space-y-2">
                                     <Label className="text-gray-600 font-medium">
-                                        Search Supplier
+                                        Cari Supplier
                                     </Label>
                                     <Input
                                         type="text"
-                                        placeholder="Supplier name..."
+                                        placeholder="Nama supplier..."
                                         value={data.search}
                                         onChange={(e) =>
                                             setData("search", e.target.value)
@@ -122,7 +122,7 @@ export default function SupplierReport({ auth, suppliers, filters = {} }) {
                                 </div>
                                 <div className="space-y-2">
                                     <Label className="text-gray-600 font-medium">
-                                        Start Date
+                                        Tanggal Mulai
                                     </Label>
                                     <Input
                                         type="date"
@@ -138,7 +138,7 @@ export default function SupplierReport({ auth, suppliers, filters = {} }) {
                                 </div>
                                 <div className="space-y-2">
                                     <Label className="text-gray-600 font-medium">
-                                        End Date
+                                        Tanggal Akhir
                                     </Label>
                                     <Input
                                         type="date"
@@ -156,8 +156,8 @@ export default function SupplierReport({ auth, suppliers, filters = {} }) {
                                         className="bg-indigo-600 text-white hover:bg-indigo-700"
                                     >
                                         {processing
-                                            ? "Applying..."
-                                            : "Apply Filters"}
+                                            ? "Menerapkan..."
+                                            : "Terapkan Filter"}
                                     </Button>
                                     <Button
                                         type="button"
@@ -172,7 +172,7 @@ export default function SupplierReport({ auth, suppliers, filters = {} }) {
                         </CardContent>
                     </Card>
 
-                    {/* Summary Cards */}
+                    {/* Kartu Ringkasan */}
                     {suppliers.data.length > 0 && (
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                             <Card className="bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200">
@@ -183,7 +183,7 @@ export default function SupplierReport({ auth, suppliers, filters = {} }) {
                                                 {getTotalSuppliers()}
                                             </div>
                                             <div className="text-sm text-gray-600">
-                                                Total Suppliers
+                                                Total Supplier
                                             </div>
                                         </div>
                                         <Users className="h-12 w-12 text-blue-500 opacity-80" />
@@ -199,7 +199,7 @@ export default function SupplierReport({ auth, suppliers, filters = {} }) {
                                                 {getTotalTransactions()}
                                             </div>
                                             <div className="text-sm text-gray-600">
-                                                Total Transactions
+                                                Total Transaksi
                                             </div>
                                         </div>
                                         <Building className="h-12 w-12 text-purple-500 opacity-80" />
@@ -217,7 +217,7 @@ export default function SupplierReport({ auth, suppliers, filters = {} }) {
                                                 )}
                                             </div>
                                             <div className="text-sm text-gray-600">
-                                                Total Purchases
+                                                Total Pembelian
                                             </div>
                                         </div>
                                         <FileText className="h-12 w-12 text-green-500 opacity-80" />
@@ -227,15 +227,15 @@ export default function SupplierReport({ auth, suppliers, filters = {} }) {
                         </div>
                     )}
 
-                    {/* Supplier Report Table */}
+                    {/* Tabel Laporan Supplier */}
                     <Card className="shadow-lg rounded-lg border border-gray-200">
                         <CardHeader className="pb-4">
                             <CardTitle className="text-2xl font-semibold text-gray-700 flex items-center gap-2">
                                 <Building className="h-6 w-6" />
-                                Supplier Report
+                                Laporan Supplier
                                 {suppliers.data.length > 0 && (
                                     <span className="text-sm font-normal text-gray-500">
-                                        ({suppliers.data.length} suppliers)
+                                        ({suppliers.data.length} supplier)
                                     </span>
                                 )}
                             </CardTitle>
@@ -246,22 +246,22 @@ export default function SupplierReport({ auth, suppliers, filters = {} }) {
                                     <TableHeader className="bg-gray-50">
                                         <TableRow>
                                             <TableHead className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                Name
+                                                Nama
                                             </TableHead>
                                             <TableHead className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                Phone
+                                                Telepon
                                             </TableHead>
                                             <TableHead className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                Company
+                                                Perusahaan
                                             </TableHead>
                                             <TableHead className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                Address
+                                                Alamat
                                             </TableHead>
                                             <TableHead className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                Total Transactions
+                                                Total Transaksi
                                             </TableHead>
                                             <TableHead className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                Total Purchases (Rp)
+                                                Total Pembelian (Rp)
                                             </TableHead>
                                         </TableRow>
                                     </TableHeader>
@@ -306,9 +306,8 @@ export default function SupplierReport({ auth, suppliers, filters = {} }) {
                                                     <div className="flex flex-col items-center gap-2">
                                                         <AlertCircle className="h-8 w-8 text-gray-400" />
                                                         <span>
-                                                            No supplier data
-                                                            found matching the
-                                                            filters.
+                                                            Tidak ada data supplier
+                                                            yang sesuai dengan filter.
                                                         </span>
                                                         <Button
                                                             variant="outline"
@@ -318,7 +317,7 @@ export default function SupplierReport({ auth, suppliers, filters = {} }) {
                                                             }
                                                             className="mt-2"
                                                         >
-                                                            Clear Filters
+                                                            Hapus Filter
                                                         </Button>
                                                     </div>
                                                 </TableCell>
@@ -328,7 +327,7 @@ export default function SupplierReport({ auth, suppliers, filters = {} }) {
                                 </Table>
                             </div>
 
-                            {/* Pagination */}
+                            {/* Paginasi */}
                             {suppliers.links && suppliers.links.length > 3 && (
                                 <div className="flex justify-center mt-6">
                                     <nav className="flex items-center space-x-2">
@@ -355,7 +354,7 @@ export default function SupplierReport({ auth, suppliers, filters = {} }) {
                             )}
                         </CardContent>
 
-                        {/* Export Buttons */}
+                        {/* Tombol Ekspor */}
                         <div className="p-6 flex justify-end items-center gap-4 border-t border-gray-200">
                             <a
                                 href={route(
@@ -372,8 +371,8 @@ export default function SupplierReport({ auth, suppliers, filters = {} }) {
                                 >
                                     <Download className="h-4 w-4" />
                                     {isExporting
-                                        ? "Exporting..."
-                                        : "Export PDF"}
+                                        ? "Mengekspor..."
+                                        : "Ekspor PDF"}
                                 </Button>
                             </a>
                             <a
@@ -391,8 +390,8 @@ export default function SupplierReport({ auth, suppliers, filters = {} }) {
                                 >
                                     <Download className="h-4 w-4" />
                                     {isExporting
-                                        ? "Exporting..."
-                                        : "Export Excel"}
+                                        ? "Mengekspor..."
+                                        : "Ekspor Excel"}
                                 </Button>
                             </a>
                         </div>

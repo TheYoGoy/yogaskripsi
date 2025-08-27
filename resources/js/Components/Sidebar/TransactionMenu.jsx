@@ -42,7 +42,7 @@ export const TransactionMenu = ({ userRole }) => {
 
     return (
         <SidebarGroup>
-            <SidebarGroupLabel>Transaction</SidebarGroupLabel>
+            <SidebarGroupLabel>Transaksi</SidebarGroupLabel>
             <SidebarMenu>
                 {visibleItems.map((item) => (
                     <SidebarMenuItem key={item.name}>

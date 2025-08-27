@@ -75,7 +75,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->name('settings.update-format');
     });
 
-    // ✅ FIXED: Products Management - admin dan manager
+    // Products Management - admin dan manager
     Route::middleware(['check.role:admin|manager'])->group(function () {
         Route::prefix('products')->name('products.')->group(function () {
             // View products (accessible to all roles dengan permission)
@@ -83,15 +83,20 @@ Route::middleware(['auth', 'verified'])->group(function () {
                 ->middleware('check.permission:view-products')
                 ->name('index');
 
-            // ✅ Generate code - HARUS SEBELUM {product} routes
+            // Generate code - HARUS SEBELUM {product} routes
             Route::get('/generate-code', [ProductController::class, 'generateCode'])
                 ->middleware('check.permission:create-products')
                 ->name('generate-code');
 
-            // ✅ Search by code untuk barcode scanning - HARUS SEBELUM {product} routes
-            Route::get('/search/{code}', [ProductController::class, 'searchByCode'])
-    ->middleware('check.permission:view-products')
-    ->name('searchByCode');
+            // Search by code untuk barcode scanning - PROPER ROUTE PATTERN
+            Route::get('/search-by-code/{code}', [ProductController::class, 'searchByCode'])
+                ->middleware('check.permission:view-products')
+                ->name('searchByCode');
+
+            // Alternative route yang accepts query parameter
+            Route::get('/search-by-code', [ProductController::class, 'searchByCode'])
+                ->middleware('check.permission:view-products')
+                ->name('searchByCode.query');
 
             // Create products
             Route::get('/create', [ProductController::class, 'create'])
@@ -124,14 +129,26 @@ Route::middleware(['auth', 'verified'])->group(function () {
                 ->middleware('check.permission:delete-products')
                 ->name('destroy');
 
-            // ✅ FIXED: Barcode routes - nama method yang benar
+            // Barcode routes
             Route::get('/{product}/barcode', [ProductController::class, 'barcode'])
                 ->middleware('check.permission:view-products')
                 ->name('barcode');
 
+            Route::get('/{product}/generate-barcode', [ProductController::class, 'generateBarcode'])
+                ->middleware('check.permission:view-products')
+                ->name('generate-barcode');
+
             Route::get('/{product}/download-barcode', [ProductController::class, 'downloadBarcode'])
                 ->middleware('check.permission:view-products')
                 ->name('download-barcode');
+
+            Route::get('/{product}/generate-qr', [ProductController::class, 'generateQrCode'])
+                ->middleware('check.permission:view-products')
+                ->name('generate-qr');
+
+            Route::get('/{product}/download-qr', [ProductController::class, 'downloadQrCode'])
+                ->middleware('check.permission:view-products')
+                ->name('download-qr');
         });
 
         // Categories Management
@@ -190,12 +207,31 @@ Route::middleware(['auth', 'verified'])->group(function () {
         });
 
         // EOQ & ROP
-        Route::get('/eoq-rop', [EoqRopController::class, 'index'])
-            ->middleware('check.permission:view-advanced-reports')
-            ->name('eoq-rop.index');
+        Route::prefix('eoq-rop')->name('eoq-rop.')->group(function () {
+            Route::get('/', [EoqRopController::class, 'index'])
+                ->middleware('check.permission:view-advanced-reports')
+                ->name('index');
+
+            Route::put('/{product}/update-parameters', [EoqRopController::class, 'updateParameters'])
+                ->middleware('check.permission:edit-products')
+                ->name('update-parameters');
+
+            Route::post('/bulk-recalculate', [EoqRopController::class, 'bulkRecalculate'])
+                ->middleware('check.permission:edit-products')
+                ->name('bulk-recalculate');
+
+            // Export routes
+            Route::get('/export-excel', [EoqRopController::class, 'exportExcel'])
+                ->middleware('check.permission:view-advanced-reports')
+                ->name('export-excel');
+
+            Route::get('/export-pdf', [EoqRopController::class, 'exportPdf'])
+                ->middleware('check.permission:view-advanced-reports')
+                ->name('export-pdf');
+        });
     });
 
-    // ✅ REPORTS MANAGEMENT
+    // REPORTS MANAGEMENT
     Route::prefix('reports')->name('reports.')->group(function () {
         Route::get('/', [ReportController::class, 'index'])->name('index');
 
@@ -230,28 +266,73 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/suppliers/export-excel', [ReportController::class, 'exportSupplierExcel'])->name('suppliers.exportExcel');
     });
 
-    // Stock Management - admin, manager, dan staff
+    // STOCK MANAGEMENT - admin, manager, dan staff
     Route::middleware(['check.permission:view-stock'])->group(function () {
-        // Stock In
-        Route::resource('stock-ins', StockInController::class)
-            ->except(['show', 'edit', 'update'])
-            ->middleware('check.permission:stock-in');
+        // STOCK IN ROUTES
+        Route::prefix('stock-ins')->name('stock-ins.')->group(function () {
+            // Index - list stock ins
+            Route::get('/', [StockInController::class, 'index'])
+                ->middleware('check.permission:stock-in')
+                ->name('index');
 
-        Route::post('stock-ins/bulk-delete', [StockInController::class, 'bulkDelete'])
-            ->middleware('check.permission:stock-in')
-            ->name('stock-ins.bulk-delete');
+            // Create form
+            Route::get('/create', [StockInController::class, 'create'])
+                ->middleware('check.permission:stock-in')
+                ->name('create');
 
-        Route::get('stock-ins/autofill/{code}', [StockInController::class, 'autofill'])
-    ->name('stock-ins.autofill');
+            // Store new stock in
+            Route::post('/', [StockInController::class, 'store'])
+                ->middleware('check.permission:stock-in')
+                ->name('store');
 
-        // Stock Out
-        Route::resource('stock-outs', StockOutController::class)
-            ->except(['show', 'edit', 'update'])
-            ->middleware('check.permission:stock-out');
+            // Autofill route - HARUS SEBELUM route dengan parameter
+            Route::get('/autofill/{code}', [StockInController::class, 'autofill'])
+                ->middleware('check.permission:stock-in')
+                ->name('autofill');
 
-        Route::post('stock-outs/bulk-delete', [StockOutController::class, 'bulkDelete'])
-            ->middleware('check.permission:stock-out')
-            ->name('stock-outs.bulk-delete');
+            // Bulk delete
+            Route::post('/bulk-delete', [StockInController::class, 'bulkDelete'])
+                ->middleware('check.permission:stock-in')
+                ->name('bulk-delete');
+
+            // Delete single stock in
+            Route::delete('/{stock_in}', [StockInController::class, 'destroy'])
+                ->middleware('check.permission:stock-in')
+                ->name('destroy');
+        });
+
+        // STOCK OUT ROUTES - DIPERBAIKI DENGAN STRUKTUR YANG SAMA
+        Route::prefix('stock-outs')->name('stock-outs.')->group(function () {
+            // Index - list stock outs
+            Route::get('/', [StockOutController::class, 'index'])
+                ->middleware('check.permission:stock-out')
+                ->name('index');
+
+            // Create form
+            Route::get('/create', [StockOutController::class, 'create'])
+                ->middleware('check.permission:stock-out')
+                ->name('create');
+
+            // Store new stock out
+            Route::post('/', [StockOutController::class, 'store'])
+                ->middleware('check.permission:stock-out')
+                ->name('store');
+
+            // Autofill route - INI YANG HILANG SEBELUMNYA!
+            Route::get('/autofill/{code}', [StockOutController::class, 'autofill'])
+                ->middleware('check.permission:stock-out')
+                ->name('autofill');
+
+            // Bulk delete
+            Route::post('/bulk-delete', [StockOutController::class, 'bulkDelete'])
+                ->middleware('check.permission:stock-out')
+                ->name('bulk-delete');
+
+            // Delete single stock out
+            Route::delete('/{stock_out}', [StockOutController::class, 'destroy'])
+                ->middleware('check.permission:stock-out')
+                ->name('destroy');
+        });
     });
 
     // Purchase Transactions - admin, manager, staff

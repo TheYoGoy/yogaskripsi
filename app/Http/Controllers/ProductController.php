@@ -243,23 +243,23 @@ class ProductController extends Controller
     }
 
     /**
-     * ✅ FIXED: Display the specified resource.
+     * Display the specified resource.
      */
     public function show(Product $product)
     {
         $product->load(['category', 'unit', 'supplier']);
         
-        // ✅ FIXED: Calculate dan assign sebagai properti terpisah
+        // Calculate dan assign sebagai properti terpisah
         $product->rop = $product->calculateRop();
         $product->eoq = $product->calculateEoq();
         
-        // ✅ FIXED: Ambil reorder status dan extract message untuk frontend
+        // Ambil reorder status dan extract message untuk frontend
         $reorderStatus = $product->getReorderStatus();
         $product->reorder_status_message = $reorderStatus['message'];
         $product->reorder_status_color = $reorderStatus['color'];
         $product->reorder_status_urgent = $reorderStatus['urgent'];
 
-        // ✅ FIXED: Juga pass categories, units, suppliers untuk edit modal
+        // Juga pass categories, units, suppliers untuk edit modal
         $categories = Category::select('id', 'name')->orderBy('name')->get();
         $units = Unit::select('id', 'name', 'symbol')->orderBy('name')->get();
         $suppliers = Supplier::select('id', 'name')->orderBy('name')->get();
@@ -455,6 +455,89 @@ class ProductController extends Controller
     }
 
     /**
+     * Search product by barcode/QR code for purchase transaction auto-fill.
+     */
+    public function searchByCode(Request $request, $code = null): JsonResponse
+    {
+        try {
+            // Handle both URL parameter and query parameter
+            $code = $code ?? $request->input('code') ?? $request->route('code');
+            
+            if (empty($code)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Kode tidak boleh kosong',
+                ], 400);
+            }
+
+            Log::info('Searching product by code', [
+                'code' => $code,
+                'user_id' => Auth::id()
+            ]);
+
+            // Search product by code or SKU
+            $product = Product::with(['supplier:id,name,phone,address'])
+                ->where(function ($query) use ($code) {
+                    $query->where('code', $code)
+                          ->orWhere('sku', $code);
+                })
+                ->first();
+
+            if (!$product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Produk tidak ditemukan untuk kode: ' . $code,
+                ], 404);
+            }
+
+            // Prepare response data
+            $responseData = [
+                'success' => true,
+                'message' => 'Produk ditemukan',
+                'product' => [
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'sku' => $product->sku,
+                    'code' => $product->code,
+                    'current_stock' => $product->current_stock,
+                    'price' => $product->price,
+                    'supplier_id' => $product->supplier_id,
+                    'supplier' => $product->supplier ? [
+                        'id' => $product->supplier->id,
+                        'name' => $product->supplier->name,
+                        'phone' => $product->supplier->phone,
+                        'address' => $product->supplier->address,
+                    ] : null,
+                ],
+            ];
+
+            Log::info('Product found by code', [
+                'code' => $code,
+                'product_id' => $product->id,
+                'product_name' => $product->name,
+                'supplier_id' => $product->supplier_id,
+                'user_id' => Auth::id()
+            ]);
+
+            return response()->json($responseData);
+
+        } catch (\Exception $e) {
+            Log::error('Error searching product by code', [
+                'code' => $request->input('code'),
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'user_id' => Auth::id()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan saat mencari produk',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * Generate barcode SVG for the product.
      */
     public function generateBarcode(Product $product): JsonResponse
@@ -503,7 +586,7 @@ class ProductController extends Controller
     }
 
     /**
-     * ✅ OPTION 1: Download Linear Barcode (sama dengan yang ditampilkan)
+     * Download Linear Barcode
      */
     public function downloadBarcode(Product $product)
     {
@@ -536,7 +619,7 @@ class ProductController extends Controller
     }
 
     /**
-     * ✅ OPTION 2: Tambah method terpisah untuk QR Code
+     * Generate QR Code
      */
     public function generateQrCode(Product $product): JsonResponse
     {
@@ -580,7 +663,7 @@ class ProductController extends Controller
     }
 
     /**
-     * ✅ OPTION 2: Download QR Code
+     * Download QR Code
      */
     public function downloadQrCode(Product $product)
     {

@@ -13,7 +13,7 @@ import { Button } from "@/Components/ui/button";
 import { Input } from "@/Components/ui/input";
 import { Label } from "@/Components/ui/label";
 import { useForm } from "@inertiajs/react";
-import { Download, FileText, AlertCircle } from "lucide-react";
+import { Download, FileText, AlertCircle, ShoppingCart, DollarSign, TrendingUp, Receipt } from "lucide-react";
 import { useState } from "react";
 
 export default function SalesHistoryReport({ auth, sales, filters = {} }) {
@@ -27,13 +27,13 @@ export default function SalesHistoryReport({ auth, sales, filters = {} }) {
     const handleFilter = (e) => {
         e.preventDefault();
 
-        // Validate date range
+        // Validasi rentang tanggal
         if (
             data.start_date &&
             data.end_date &&
             new Date(data.start_date) > new Date(data.end_date)
         ) {
-            alert("Start date cannot be later than end date");
+            alert("Tanggal mulai tidak boleh lebih besar dari tanggal akhir");
             return;
         }
 
@@ -72,23 +72,80 @@ export default function SalesHistoryReport({ auth, sales, filters = {} }) {
         );
     };
 
+    const formatDate = (dateString) => {
+        try {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('id-ID', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric'
+            });
+        } catch (error) {
+            return dateString;
+        }
+    };
+
     return (
         <Layout
             user={auth.user}
             header={
                 <h2 className="font-bold text-3xl text-gray-800">
-                    Sales History Report
+                    Laporan Riwayat Penjualan
                 </h2>
             }
         >
-            <Head title="Sales History Report" />
+            <Head title="Laporan Riwayat Penjualan" />
 
-            <div className="py-8 max-w-7xl mx-auto px-4">
+            <div className="py-8 max-w-7xl mx-auto px-4 space-y-6">
+                
+                {/* Statistik Cards */}
+                {sales.data.length > 0 && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                        <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white border-0 shadow-lg">
+                            <CardContent className="p-6">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-blue-100 text-sm">Total Transaksi</p>
+                                        <p className="text-3xl font-bold text-white">{sales.data.length}</p>
+                                    </div>
+                                    <ShoppingCart className="h-12 w-12 text-blue-200" />
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white border-0 shadow-lg">
+                            <CardContent className="p-6">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-green-100 text-sm">Total Penjualan</p>
+                                        <p className="text-3xl font-bold text-white">{formatCurrency(getTotalAmount())}</p>
+                                    </div>
+                                    <DollarSign className="h-12 w-12 text-green-200" />
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white border-0 shadow-lg">
+                            <CardContent className="p-6">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-purple-100 text-sm">Rata-rata per Transaksi</p>
+                                        <p className="text-3xl font-bold text-white">
+                                            {formatCurrency(getTotalAmount() / sales.data.length)}
+                                        </p>
+                                    </div>
+                                    <TrendingUp className="h-12 w-12 text-purple-200" />
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </div>
+                )}
+
                 {/* Filter Card */}
-                <Card className="mb-6 shadow-lg border border-gray-200">
-                    <CardHeader>
-                        <CardTitle className="text-2xl font-semibold text-gray-700">
-                            Filter Sales History
+                <Card className="shadow-sm border border-gray-200">
+                    <CardHeader className="pb-4">
+                        <CardTitle className="text-xl font-semibold text-gray-800">
+                            Filter Riwayat Penjualan
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
@@ -99,9 +156,9 @@ export default function SalesHistoryReport({ auth, sales, filters = {} }) {
                             <div className="space-y-2">
                                 <Label
                                     htmlFor="start_date"
-                                    className="text-gray-600 font-medium"
+                                    className="text-gray-700 font-medium text-sm"
                                 >
-                                    Start Date
+                                    Tanggal Mulai
                                 </Label>
                                 <Input
                                     type="date"
@@ -110,15 +167,15 @@ export default function SalesHistoryReport({ auth, sales, filters = {} }) {
                                     onChange={(e) =>
                                         setData("start_date", e.target.value)
                                     }
-                                    className="focus:ring-indigo-500 focus:border-indigo-500"
+                                    className="focus:ring-blue-500 focus:border-blue-500"
                                 />
                             </div>
                             <div className="space-y-2">
                                 <Label
                                     htmlFor="end_date"
-                                    className="text-gray-600 font-medium"
+                                    className="text-gray-700 font-medium text-sm"
                                 >
-                                    End Date
+                                    Tanggal Akhir
                                 </Label>
                                 <Input
                                     type="date"
@@ -127,98 +184,63 @@ export default function SalesHistoryReport({ auth, sales, filters = {} }) {
                                     onChange={(e) =>
                                         setData("end_date", e.target.value)
                                     }
-                                    className="focus:ring-indigo-500 focus:border-indigo-500"
+                                    className="focus:ring-blue-500 focus:border-blue-500"
                                 />
                             </div>
-                            <div className="flex items-end gap-2">
+                            <div className="flex items-end gap-2 md:col-span-2">
                                 <Button
                                     type="button"
                                     variant="outline"
                                     onClick={handleReset}
                                     disabled={processing}
+                                    className="w-full md:w-auto"
                                 >
-                                    Reset
+                                    Reset Filter
                                 </Button>
                                 <Button
                                     type="submit"
                                     disabled={processing}
-                                    className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                                    className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white"
                                 >
-                                    {processing ? "Applying..." : "Apply"}
+                                    {processing ? "Memuat..." : "Terapkan Filter"}
                                 </Button>
                             </div>
                         </form>
                     </CardContent>
                 </Card>
 
-                {/* Summary Card */}
-                {sales.data.length > 0 && (
-                    <Card className="mb-6 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200">
-                        <CardContent className="p-6">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div className="text-center">
-                                    <div className="text-2xl font-bold text-indigo-600">
-                                        {sales.data.length}
-                                    </div>
-                                    <div className="text-sm text-gray-600">
-                                        Total Transactions
-                                    </div>
-                                </div>
-                                <div className="text-center">
-                                    <div className="text-2xl font-bold text-green-600">
-                                        {formatCurrency(getTotalAmount())}
-                                    </div>
-                                    <div className="text-sm text-gray-600">
-                                        Total Sales Amount
-                                    </div>
-                                </div>
-                                <div className="text-center">
-                                    <div className="text-2xl font-bold text-purple-600">
-                                        {formatCurrency(
-                                            getTotalAmount() / sales.data.length
-                                        )}
-                                    </div>
-                                    <div className="text-sm text-gray-600">
-                                        Average Per Transaction
-                                    </div>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-                )}
-
-                {/* Sales Table */}
-                <Card className="shadow-lg border border-gray-200">
-                    <CardHeader>
-                        <CardTitle className="text-2xl font-semibold text-gray-700 flex items-center gap-2">
-                            <FileText className="h-6 w-6" />
-                            Sales History
+                {/* Tabel Penjualan */}
+                <Card className="shadow-sm border border-gray-200">
+                    <CardHeader className="pb-4">
+                        <CardTitle className="text-xl font-semibold text-gray-800 flex items-center gap-2">
+                            <Receipt className="h-5 w-5 text-gray-600" />
+                            Riwayat Penjualan
                             {sales.data.length > 0 && (
                                 <span className="text-sm font-normal text-gray-500">
-                                    ({sales.data.length} transactions)
+                                    ({sales.data.length} transaksi)
                                 </span>
                             )}
                         </CardTitle>
                     </CardHeader>
-                    <CardContent>
-                        <div className="overflow-x-auto rounded-md border">
+                    <CardContent className="p-0">
+                        <div className="overflow-x-auto">
                             <Table className="min-w-full">
                                 <TableHeader className="bg-gray-50">
                                     <TableRow>
                                         <TableHead className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                            Invoice
+                                            No. Invoice
                                         </TableHead>
                                         <TableHead className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                            Product
+                                            Produk
                                         </TableHead>
                                         <TableHead className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                            Date
+                                            Tanggal
                                         </TableHead>
                                         <TableHead className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                            User
+                                            Pengguna
                                         </TableHead>
-                                        <TableHead className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                            Total Amount
+                                        <TableHead className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            Total Jumlah
                                         </TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -233,23 +255,16 @@ export default function SalesHistoryReport({ auth, sales, filters = {} }) {
                                                     {sale.invoice_number}
                                                 </TableCell>
                                                 <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                                                    {sale.product?.name ||
-                                                        "Unknown Product"}
+                                                    {sale.product?.name || "Produk Tidak Diketahui"}
                                                 </TableCell>
                                                 <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                                                    {sale.transaction_date}
+                                                    {formatDate(sale.transaction_date)}
                                                 </TableCell>
                                                 <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                                                    {sale.user?.name ||
-                                                        "Unknown User"}
+                                                    {sale.user?.name || "Pengguna Tidak Diketahui"}
                                                 </TableCell>
-                                                <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium text-green-600">
-                                                    {formatCurrency(
-                                                        parseFloat(
-                                                            sale.total_amount ||
-                                                                0
-                                                        )
-                                                    )}
+                                                <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-center font-semibold text-green-600">
+                                                    {formatCurrency(parseFloat(sale.total_amount || 0))}
                                                 </TableCell>
                                             </TableRow>
                                         ))
@@ -262,8 +277,7 @@ export default function SalesHistoryReport({ auth, sales, filters = {} }) {
                                                 <div className="flex flex-col items-center gap-2">
                                                     <AlertCircle className="h-8 w-8 text-gray-400" />
                                                     <span>
-                                                        No sales data found for
-                                                        the selected filters.
+                                                        Tidak ditemukan data penjualan yang sesuai dengan filter.
                                                     </span>
                                                     <Button
                                                         variant="outline"
@@ -271,7 +285,7 @@ export default function SalesHistoryReport({ auth, sales, filters = {} }) {
                                                         onClick={handleReset}
                                                         className="mt-2"
                                                     >
-                                                        Clear Filters
+                                                        Reset Filter
                                                     </Button>
                                                 </div>
                                             </TableCell>
@@ -283,7 +297,7 @@ export default function SalesHistoryReport({ auth, sales, filters = {} }) {
 
                         {/* Pagination */}
                         {sales.links && sales.links.length > 3 && (
-                            <div className="flex justify-center mt-6">
+                            <div className="flex justify-center mt-6 p-6">
                                 <nav className="flex items-center space-x-2">
                                     {sales.links.map((link, index) => (
                                         <Link
@@ -294,7 +308,7 @@ export default function SalesHistoryReport({ auth, sales, filters = {} }) {
                                             }}
                                             className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
                                                 link.active
-                                                    ? "bg-indigo-600 text-white shadow"
+                                                    ? "bg-blue-600 text-white shadow-md hover:bg-blue-700"
                                                     : "bg-white border border-gray-300 text-gray-700 hover:bg-gray-100"
                                             } ${
                                                 !link.url
@@ -308,7 +322,7 @@ export default function SalesHistoryReport({ auth, sales, filters = {} }) {
                         )}
                     </CardContent>
 
-                    {/* Export Buttons */}
+                    {/* Tombol Export */}
                     <div className="p-6 flex justify-end items-center gap-4 border-t border-gray-200">
                         <a
                             href={route("reports.sales.exportPdf", data)}
@@ -321,7 +335,7 @@ export default function SalesHistoryReport({ auth, sales, filters = {} }) {
                                 className="bg-red-600 hover:bg-red-700 text-white shadow-sm flex items-center gap-2"
                             >
                                 <Download className="h-4 w-4" />
-                                {isExporting ? "Exporting..." : "Export PDF"}
+                                {isExporting ? "Mengekspor..." : "Ekspor PDF"}
                             </Button>
                         </a>
                         <a
@@ -335,7 +349,7 @@ export default function SalesHistoryReport({ auth, sales, filters = {} }) {
                                 className="bg-green-600 hover:bg-green-700 text-white shadow-sm flex items-center gap-2"
                             >
                                 <Download className="h-4 w-4" />
-                                {isExporting ? "Exporting..." : "Export Excel"}
+                                {isExporting ? "Mengekspor..." : "Ekspor Excel"}
                             </Button>
                         </a>
                     </div>

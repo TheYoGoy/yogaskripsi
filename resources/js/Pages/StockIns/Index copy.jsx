@@ -1,5 +1,5 @@
-import Layout from "@/Layouts/Layout";
-import { Head, Link, useForm, router } from "@inertiajs/react"; // Import 'router' for Inertia navigation
+import { useEffect, useState, useCallback } from "react";
+import { Head, Link, useForm, router } from "@inertiajs/react";
 import {
     Table,
     TableBody,
@@ -17,14 +17,38 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-    DialogTrigger,
 } from "@/Components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
-import { useEffect, useState } from "react"; // Import useState for search and date filtering
-import { Trash2, PlusCircle, FilterIcon, RotateCcw } from "lucide-react"; // Import icons
-import { Input } from "@/Components/ui/input"; // Import Input component for search bar
-import DatePicker from "@/Components/DatePicker"; // Import DatePicker component
-import dayjs from "dayjs"; // Import dayjs for date formatting
+import dayjs from "dayjs";
+import { Input } from "@/Components/ui/input";
+import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+} from "@/Components/ui/card";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/Components/ui/select";
+import { Separator } from "@/Components/ui/separator";
+import Layout from "@/Layouts/Layout";
+import DatePicker from "@/Components/DatePicker";
+import {
+    Trash2,
+    PlusCircle,
+    RotateCcw,
+    ArrowUpNarrowWide,
+    ArrowDownWideNarrow,
+    ArrowUpDown,
+    SearchIcon,
+    ArrowDownCircle,
+    RefreshCw,
+} from "lucide-react";
 import {
     Pagination,
     PaginationContent,
@@ -34,350 +58,684 @@ import {
     PaginationNext,
     PaginationEllipsis,
 } from "@/Components/ui/pagination";
-import { Card } from "@/Components/ui/card"; // Import Shadcn Pagination components
+import { Checkbox } from "@/components/ui/checkbox";
 
-export default function StockInIndex({ auth, stockIns, flash }) {
-    // Initialize useForm for delete operation
+export default function StockInIndex({
+    auth,
+    stockIns,
+    flash,
+    filters,
+    suppliers,
+    products,
+}) {
+    const [selectedIds, setSelectedIds] = useState([]);
+    const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
     const { delete: inertiaDelete } = useForm();
-    // State to hold the search query input by the user
-    const [searchQuery, setSearchQuery] = useState("");
-    // State to hold the selected date for filtering
-    const [selectedDate, setSelectedDate] = useState(null);
 
-    // useEffect hook to display toast notifications for flash messages
+    // Filter states
+    const [selectedDate, setSelectedDate] = useState(
+        filters.transaction_date ? new Date(filters.transaction_date) : null
+    );
+    const [searchQuery, setSearchQuery] = useState(filters.search || "");
+    const [selectedSupplier, setSelectedSupplier] = useState(
+        filters.supplier_name || "all"
+    );
+    const [selectedProduct, setSelectedProduct] = useState(
+        filters.product_id || "all"
+    );
+    const [perPage, setPerPage] = useState(filters.per_page || "10");
+    const [sortBy, setSortBy] = useState(filters.sort_by || "id");
+    const [sortDirection, setSortDirection] = useState(
+        filters.sort_direction || "desc"
+    );
+
+    const [stockInToDelete, setStockInToDelete] = useState(null);
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+
+    // Auto-search dengan debounce
     useEffect(() => {
-        if (flash && flash.success) {
+        const timeoutId = setTimeout(() => {
+            if (searchQuery !== filters.search) {
+                applyFilter();
+            }
+        }, 500);
+
+        return () => clearTimeout(timeoutId);
+    }, [searchQuery]);
+
+    // Toast notifications
+    useEffect(() => {
+        if (flash?.success) {
             toast({
                 title: "Sukses!",
                 description: flash.success,
                 variant: "success",
             });
         }
-        if (flash && flash.error) {
+        if (flash?.error) {
             toast({
                 title: "Error!",
                 description: flash.error,
                 variant: "destructive",
             });
         }
-    }, [flash]); // Dependency array ensures this runs when 'flash' prop changes
+    }, [flash]);
 
-    // Function to handle stock in record deletion
-    const handleDelete = (stockInId) => {
-        inertiaDelete(route("stock-ins.destroy", stockInId), {
+    const handleConfirmDelete = useCallback((stockin) => {
+        setStockInToDelete(stockin);
+        setIsDeleteModalOpen(true);
+    }, []);
+
+    const handleDelete = useCallback(() => {
+        if (!stockInToDelete) return;
+
+        inertiaDelete(route("stock-ins.destroy", stockInToDelete.id), {
             onSuccess: () => {
-                // Show success toast after successful deletion
                 toast({
                     title: "Berhasil dihapus!",
-                    description: "Catatan stok masuk telah berhasil dihapus.",
+                    description: "Stock In telah berhasil dihapus.",
                     variant: "success",
                 });
+                setIsDeleteModalOpen(false);
+                setStockInToDelete(null);
             },
-            onError: (errors) => {
-                // Show error toast if deletion fails
+            onError: () => {
                 toast({
                     title: "Gagal menghapus!",
-                    description:
-                        errors.message ||
-                        "Terjadi kesalahan saat menghapus catatan stok masuk.",
+                    description: "Terjadi kesalahan saat menghapus Stock In.",
                     variant: "destructive",
                 });
+                setIsDeleteModalOpen(false);
+                setStockInToDelete(null);
             },
+        });
+    }, [stockInToDelete, inertiaDelete]);
+
+    const applyFilter = useCallback(() => {
+        const filterData = {
+            transaction_date: selectedDate
+                ? dayjs(selectedDate).format("YYYY-MM-DD")
+                : undefined,
+            search: searchQuery.trim() || undefined,
+            supplier_name: selectedSupplier === "all" ? undefined : selectedSupplier,
+            product_id: selectedProduct === "all" ? undefined : selectedProduct,
+            per_page: perPage,
+            sort_by: sortBy,
+            sort_direction: sortDirection,
+        };
+
+        // Filter out undefined values
+        Object.keys(filterData).forEach(key => {
+            if (filterData[key] === undefined) {
+                delete filterData[key];
+            }
+        });
+
+        setIsLoading(true);
+        router.get(route("stock-ins.index"), filterData, {
+            preserveState: true,
+            replace: true,
+            onFinish: () => setIsLoading(false),
+        });
+    }, [selectedDate, searchQuery, selectedSupplier, selectedProduct, perPage, sortBy, sortDirection]);
+
+    const resetFilter = useCallback(() => {
+        setSelectedDate(null);
+        setSearchQuery("");
+        setSelectedSupplier("all");
+        setSelectedProduct("all");
+        setPerPage("10");
+        setSortBy("id");
+        setSortDirection("desc");
+        setIsLoading(true);
+        
+        router.get(route("stock-ins.index"), {}, { 
+            preserveState: true, 
+            replace: true,
+            onFinish: () => setIsLoading(false),
+        });
+    }, []);
+
+    const handleSort = useCallback((column) => {
+        if (sortBy === column) {
+            setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+        } else {
+            setSortBy(column);
+            setSortDirection("asc");
+        }
+    }, [sortBy, sortDirection]);
+
+    // Apply filter ketika sort berubah
+    useEffect(() => {
+        if (sortBy !== filters.sort_by || sortDirection !== filters.sort_direction) {
+            applyFilter();
+        }
+    }, [sortBy, sortDirection]);
+
+    const handleManualRefresh = () => {
+        setIsLoading(true);
+        router.reload({
+            onFinish: () => setIsLoading(false),
         });
     };
 
-    // Function to apply search and date filters
-    const applyFilters = () => {
-        router.get(
-            route("stock-ins.index"),
+    const getSortIcon = (column) => {
+        if (sortBy === column) {
+            return sortDirection === "asc" ? (
+                <ArrowUpNarrowWide className="h-4 w-4 ml-1" />
+            ) : (
+                <ArrowDownWideNarrow className="h-4 w-4 ml-1" />
+            );
+        }
+        return <ArrowUpDown className="h-4 w-4 ml-1" />;
+    };
+
+    const handleBulkDelete = () => {
+        router.post(
+            route("stock-ins.bulk-delete"),
+            { ids: selectedIds },
             {
-                search: searchQuery || undefined, // Pass the search query to the backend
-                transaction_date: selectedDate
-                    ? dayjs(selectedDate).format("YYYY-MM-DD")
-                    : undefined, // Pass formatted date to backend
-            },
-            { preserveState: true, replace: true } // Preserve scroll position and replace history entry
+                preserveScroll: true,
+                onSuccess: () => {
+                    setSelectedIds([]);
+                    toast({
+                        title: "Berhasil dihapus!",
+                        description: `${selectedIds.length} Stock In berhasil dihapus.`,
+                        variant: "success",
+                    });
+                    setIsBulkDeleteOpen(false);
+                },
+                onError: () => {
+                    toast({
+                        title: "Gagal menghapus!",
+                        description: "Terjadi kesalahan saat menghapus Stock In terpilih.",
+                        variant: "destructive",
+                    });
+                    setIsBulkDeleteOpen(false);
+                },
+            }
         );
     };
 
-    // Function to reset all filters (search and date)
-    const resetFilters = () => {
-        setSearchQuery("");
-        setSelectedDate(null);
-        router.get(
-            route("stock-ins.index"),
-            {},
-            { preserveState: true, replace: true }
-        );
+    const safeDisplay = (value, fallback = "-") => {
+        return value != null && value !== "" ? value : fallback;
     };
+
+    const hasData = stockIns?.data && stockIns.data.length > 0;
+    const hasFilters = searchQuery || selectedDate || selectedSupplier !== 'all' || selectedProduct !== 'all';
 
     return (
         <Layout user={auth.user}>
             <Head title="Stock In" />
-            <Card className="p-8">
-                {/* Header Title and Date Filter Section */}
-                <div className="flex flex-col md:flex-row md:items-end justify-between mb-7 gap-4">
-                    <h1 className="text-3xl font-bold ">Daftar Stok Masuk</h1>
-                    {/* Date Filter and related buttons */}
-                    <div className="flex flex-col md:flex-row items-end gap-3">
-                        <div className="flex flex-col gap-2">
-                            <label
-                                htmlFor="date-filter"
-                                className="text-sm font-medium text-gray-700"
-                            >
-                                Filter Tanggal Transaksi
-                            </label>
-                            <DatePicker
-                                id="date-filter"
-                                value={selectedDate}
-                                onChange={setSelectedDate}
-                            />
+            <div className="container max-w-6xl mx-auto px-4 py-8">
+                <Card className="shadow-lg border-none rounded-xl">
+                    <CardHeader className="pb-4 border-b">
+                        <Card className="relative w-full p-6 bg-green-800 overflow-hidden rounded-xl">
+                            <ArrowDownCircle className="absolute right-4 bottom-[-100px] text-white opacity-10 w-80 h-80 z-0" />
+
+                            <div className="flex gap-4 items-center z-10">
+                                <ArrowDownCircle className="text-white w-14 h-14" />
+                                <div>
+                                    <CardTitle className="text-3xl md:text-4xl font-bold tracking-tight text-white">
+                                        Stock In
+                                    </CardTitle>
+                                    <CardDescription className="text-md text-white mt-1">
+                                        Kelola riwayat stok masuk produk.
+                                    </CardDescription>
+                                </div>
+                            </div>
+
+                            <div className="absolute right-6 top-1/2 -translate-y-1/2 z-20 flex gap-2">
+                                <Button
+                                    onClick={handleManualRefresh}
+                                    variant="outline"
+                                    className="bg-white/10 border-white/20 text-white hover:bg-white/20"
+                                    disabled={isLoading}
+                                >
+                                    <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                                </Button>
+                                
+                                {(auth.user.roles.includes("admin") || auth.user.roles.includes("staff")) && (
+                                    <Link href={route("stock-ins.create")}>
+                                        <Button className="flex items-center gap-2 bg-white text-green-800 hover:bg-gray-100 shadow-md">
+                                            <PlusCircle className="h-5 w-5" />
+                                            Catat Stock In Baru
+                                        </Button>
+                                    </Link>
+                                )}
+                            </div>
+                        </Card>
+                    </CardHeader>
+
+                    <CardContent className="space-y-6 pt-6">
+                        {/* Filter Section */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 p-4 border rounded-lg shadow-sm bg-gray-50">
+                            {/* Search */}
+                            <div className="flex flex-col gap-2">
+                                <label className="text-sm font-medium">Cari Stock In</label>
+                                <div className="relative">
+                                    <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                                    <Input
+                                        type="text"
+                                        placeholder="Produk, Supplier, Kode..."
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        className="pl-9"
+                                        disabled={isLoading}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Date Filter */}
+                            <div className="flex flex-col gap-2">
+                                <label className="text-sm font-medium">Tanggal Stock In</label>
+                                <DatePicker
+                                    value={selectedDate}
+                                    onChange={setSelectedDate}
+                                    className="w-full"
+                                    disabled={isLoading}
+                                />
+                            </div>
+
+                            {/* Supplier Filter */}
+                            <div className="flex flex-col gap-2">
+                                <label className="text-sm font-medium">Supplier</label>
+                                <Select
+                                    value={selectedSupplier}
+                                    onValueChange={setSelectedSupplier}
+                                    disabled={isLoading}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Pilih Supplier" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">Semua Supplier</SelectItem>
+                                        {suppliers?.map((supplier) => (
+                                            <SelectItem key={supplier.id} value={supplier.name}>
+                                                {supplier.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {/* Product Filter */}
+                            <div className="flex flex-col gap-2">
+                                <label className="text-sm font-medium">Produk</label>
+                                <Select
+                                    value={selectedProduct}
+                                    onValueChange={setSelectedProduct}
+                                    disabled={isLoading}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Pilih Produk" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">Semua Produk</SelectItem>
+                                        {products?.map((product) => (
+                                            <SelectItem key={product.id} value={String(product.id)}>
+                                                {product.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {/* Per Page */}
+                            <div className="flex flex-col gap-2">
+                                <label className="text-sm font-medium">Tampilkan</label>
+                                <Select value={perPage} onValueChange={setPerPage} disabled={isLoading}>
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="10">10</SelectItem>
+                                        <SelectItem value="25">25</SelectItem>
+                                        <SelectItem value="50">50</SelectItem>
+                                        <SelectItem value="100">100</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {/* Action Buttons */}
+                            <div className="col-span-full flex justify-between items-center gap-3 mt-2 pt-4 border-t">
+                                <div className="flex gap-2">
+                                    {selectedIds.length > 0 && (
+                                        <Button
+                                            variant="destructive"
+                                            onClick={() => setIsBulkDeleteOpen(true)}
+                                            disabled={isLoading}
+                                        >
+                                            Hapus Terpilih ({selectedIds.length})
+                                        </Button>
+                                    )}
+                                </div>
+                                
+                                <div className="flex gap-2">
+                                    <Button
+                                        onClick={resetFilter}
+                                        variant="outline"
+                                        disabled={isLoading}
+                                    >
+                                        <RotateCcw className="h-4 w-4 mr-2" /> 
+                                        Reset
+                                    </Button>
+                                    <Button
+                                        onClick={applyFilter}
+                                        className="bg-green-800 hover:bg-green-900"
+                                        disabled={isLoading}
+                                    >
+                                        {isLoading && <RefreshCw className="h-4 w-4 mr-2 animate-spin" />}
+                                        Terapkan Filter
+                                    </Button>
+                                </div>
+                            </div>
                         </div>
-                        <Button
-                            onClick={applyFilters}
-                            className="gap-1 mt-auto"
-                        >
-                            <FilterIcon className="h-4 w-4" /> Filter
-                        </Button>
-                        <Button
-                            variant="outline"
-                            onClick={resetFilters}
-                            className="gap-1 mt-auto"
-                        >
-                            <RotateCcw className="h-4 w-4" /> Reset
-                        </Button>
-                    </div>
-                </div>
 
-                {/* Action Button (Catat Stok Masuk Baru) and Search Bar Section */}
-                <div className="flex flex-col md:flex-row justify-between mb-5 items-center gap-4">
-                    {/* "Catat Stok Masuk Baru" button, visible only for admin or staff roles */}
-                    {(auth.user.role === "admin" ||
-                        auth.user.role === "staff") && (
-                        <Link href={route("stock-ins.create")}>
-                            <Button className="gap-2 w-full md:w-auto">
-                                <PlusCircle className="h-4 w-4" /> Catat Stok
-                                Masuk Baru
-                            </Button>
-                        </Link>
-                    )}
-                    {/* Search Input Bar */}
-                    <div className="w-full md:w-fit flex justify-end">
-                        <Input
-                            type="text"
-                            placeholder="Cari berdasarkan nama produk atau supplier..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            // Trigger search when Enter key is pressed
-                            onKeyPress={(e) => {
-                                if (e.key === "Enter") {
-                                    applyFilters(); // Call applyFilters to include search
-                                }
-                            }}
-                            className="max-w-sm" // Limit width for better aesthetics
-                        />
-                    </div>
-                </div>
+                        <Separator className="my-6" />
 
-                {/* Table Section */}
-                <div className="rounded-lg border overflow-hidden">
-                    <Table className="min-w-full divide-y divide-gray-200">
-                        <TableHeader className="bg-[#035864]">
-                            <TableRow>
-                                <TableHead className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
-                                    Produk
-                                </TableHead>
-                                <TableHead className="px-6 py-3 text-right text-xs font-medium text-white uppercase tracking-wider">
-                                    Kuantitas
-                                </TableHead>
-                                <TableHead className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
-                                    Supplier
-                                </TableHead>
-                                <TableHead className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
-                                    Tanggal Transaksi
-                                </TableHead>
-                                <TableHead className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
-                                    Dicatat Oleh
-                                </TableHead>
-                                <TableHead className="px-6 py-3 text-center text-xs font-medium text-white uppercase tracking-wider">
-                                    Aksi
-                                </TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody className="bg-white divide-y divide-gray-200">
-                            {/* Conditional rendering based on whether stockIns data exists */}
-                            {stockIns.data.length > 0 ? (
-                                stockIns.data.map((transaction) => (
-                                    <TableRow
-                                        key={transaction.id}
-                                        className="hover:bg-gray-50"
-                                    >
-                                        <TableCell className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                            {transaction.product.name}
-                                        </TableCell>
-                                        <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-700">
-                                            {transaction.quantity}
-                                        </TableCell>
-                                        <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                                            {transaction.supplier
-                                                ? transaction.supplier.name
-                                                : "-"}
-                                        </TableCell>
-                                        <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                                            {dayjs(
-                                                transaction.transaction_date
-                                            ).format("DD MMMM YYYY")}
-                                        </TableCell>
-                                        <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                                            {transaction.user.name}
-                                        </TableCell>
-                                        <TableCell className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium space-x-2">
-                                            {/* Only admin can delete stock in records */}
-                                            {auth.user.roles.includes(
-                                                "admin"
-                                            ) ? (
-                                                <Dialog>
-                                                    <DialogTrigger asChild>
-                                                        <Button
-                                                            className="bg-red-500"
-                                                            size="sm"
-                                                        >
-                                                            <Trash2 className="w-4 h-4 mr-1" />{" "}
-                                                            Hapus
-                                                        </Button>
-                                                    </DialogTrigger>
-                                                    <DialogContent className="sm:max-w-md">
-                                                        <DialogHeader>
-                                                            <DialogTitle>
-                                                                Hapus Catatan
-                                                                Stok Masuk?
-                                                            </DialogTitle>
-                                                            <DialogDescription>
-                                                                Tindakan ini
-                                                                tidak dapat
-                                                                dibatalkan dan
-                                                                akan menghapus
-                                                                catatan stok
-                                                                masuk secara
-                                                                permanen dan
-                                                                mengembalikan
-                                                                kuantitas stok
-                                                                untuk produk.
-                                                            </DialogDescription>
-                                                        </DialogHeader>
-                                                        <DialogFooter className="flex justify-end gap-2 mt-4">
-                                                            <DialogClose
-                                                                asChild
-                                                            >
-                                                                <Button
-                                                                    type="button"
-                                                                    variant="outline"
-                                                                >
-                                                                    Batal
-                                                                </Button>
-                                                            </DialogClose>
-                                                            <Button
-                                                                type="button"
-                                                                variant="destructive"
-                                                                onClick={() =>
-                                                                    handleDelete(
-                                                                        transaction.id
-                                                                    )
-                                                                }
-                                                            >
-                                                                Hapus
-                                                            </Button>
-                                                        </DialogFooter>
-                                                    </DialogContent>
-                                                </Dialog>
-                                            ) : null}
-                                        </TableCell>
-                                    </TableRow>
-                                ))
-                            ) : (
-                                // Message when no stock in transactions are found
-                                <TableRow>
-                                    <TableCell
-                                        colSpan={6} // Adjusted colspan to match number of columns
-                                        className="text-center py-10 text-lg text-gray-500"
-                                    >
-                                        Tidak ada catatan stok masuk ditemukan.
-                                    </TableCell>
-                                </TableRow>
-                            )}
-                        </TableBody>
-                    </Table>
-                </div>
+                        {/* Loading State */}
+                        {isLoading && (
+                            <div className="flex justify-center items-center py-8">
+                                <RefreshCw className="h-8 w-8 animate-spin text-green-800" />
+                                <span className="ml-2 text-green-800">Memuat data...</span>
+                            </div>
+                        )}
 
-                {/* Pagination Section (below the table) */}
-                {/* Only render pagination if there are links and more than 3 (Previous, 1, Next) */}
-                {stockIns.links && stockIns.links.length > 3 && (
-                    <div className="flex justify-center mt-6">
-                        <Pagination>
-                            <PaginationContent>
-                                {stockIns.links.map((link, index) => {
-                                    const isPrevious =
-                                        link.label.includes("Previous");
-                                    const isNext = link.label.includes("Next");
-                                    const isEllipsis =
-                                        link.label.includes("...");
-
-                                    // Do not render disabled "Previous" or "Next" links if they have no URL
-                                    if (link.url === null && !isEllipsis) {
-                                        return null;
-                                    }
-
-                                    return (
-                                        <PaginationItem key={index}>
-                                            {/* Render PaginationPrevious for "Previous" link */}
-                                            {isPrevious && (
-                                                <PaginationPrevious
-                                                    href={link.url || "#"}
-                                                    className={
-                                                        !link.url
-                                                            ? "opacity-50 cursor-not-allowed"
-                                                            : ""
-                                                    }
-                                                />
-                                            )}
-                                            {/* Render PaginationNext for "Next" link */}
-                                            {isNext && (
-                                                <PaginationNext
-                                                    href={link.url || "#"}
-                                                    className={
-                                                        !link.url
-                                                            ? "opacity-50 cursor-not-allowed"
-                                                            : ""
-                                                    }
-                                                />
-                                            )}
-                                            {/* Render standard PaginationLink for page numbers */}
-                                            {!isPrevious &&
-                                                !isNext &&
-                                                !isEllipsis && (
-                                                    <PaginationLink
-                                                        href={link.url || "#"}
-                                                        isActive={link.active}
-                                                        className={
-                                                            !link.url
-                                                                ? "opacity-50 cursor-not-allowed"
-                                                                : ""
+                        {/* Table */}
+                        {!isLoading && (
+                            <div className="rounded-lg border overflow-hidden shadow-sm">
+                                <Table>
+                                    <TableHeader className="bg-green-800">
+                                        <TableRow>
+                                            <TableHead className="w-12">
+                                                <Checkbox
+                                                    checked={hasData && selectedIds.length === stockIns.data.length}
+                                                    onCheckedChange={(checked) => {
+                                                        if (checked && hasData) {
+                                                            setSelectedIds(stockIns.data.map(item => item.id));
+                                                        } else {
+                                                            setSelectedIds([]);
                                                         }
-                                                    >
-                                                        {link.label}
-                                                    </PaginationLink>
-                                                )}
-                                            {isEllipsis && (
-                                                <PaginationEllipsis />
-                                            )}
-                                        </PaginationItem>
-                                    );
-                                })}
-                            </PaginationContent>
-                        </Pagination>
-                    </div>
-                )}
-            </Card>
+                                                    }}
+                                                />
+                                            </TableHead>
+
+                                            <TableHead
+                                                className="text-white cursor-pointer hover:bg-green-700"
+                                                onClick={() => handleSort("code")}
+                                            >
+                                                <div className="flex items-center">
+                                                    Kode {getSortIcon("code")}
+                                                </div>
+                                            </TableHead>
+
+                                            <TableHead className="text-white">Produk</TableHead>
+
+                                            <TableHead
+                                                className="text-white cursor-pointer hover:bg-green-700 text-right"
+                                                onClick={() => handleSort("quantity")}
+                                            >
+                                                <div className="flex items-center justify-end">
+                                                    Qty {getSortIcon("quantity")}
+                                                </div>
+                                            </TableHead>
+
+                                            <TableHead className="text-white">Supplier</TableHead>
+
+                                            <TableHead
+                                                className="text-white cursor-pointer hover:bg-green-700"
+                                                onClick={() => handleSort("date")}
+                                            >
+                                                <div className="flex items-center">
+                                                    Tanggal {getSortIcon("date")}
+                                                </div>
+                                            </TableHead>
+
+                                            <TableHead className="text-white">Sumber</TableHead>
+                                            <TableHead className="text-white">Dicatat Oleh</TableHead>
+                                            <TableHead className="text-white text-center">Aksi</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {hasData ? (
+                                            stockIns.data.map((stockIn) => (
+                                                <TableRow
+                                                    key={stockIn.id}
+                                                    className="hover:bg-gray-50"
+                                                >
+                                                    <TableCell>
+                                                        <Checkbox
+                                                            checked={selectedIds.includes(stockIn.id)}
+                                                            onCheckedChange={(checked) => {
+                                                                if (checked) {
+                                                                    setSelectedIds([...selectedIds, stockIn.id]);
+                                                                } else {
+                                                                    setSelectedIds(selectedIds.filter(id => id !== stockIn.id));
+                                                                }
+                                                            }}
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell className="font-medium">
+                                                        {safeDisplay(stockIn.code)}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <div>
+                                                            <div className="font-medium">{safeDisplay(stockIn.product?.name)}</div>
+                                                            {stockIn.product?.sku && (
+                                                                <div className="text-xs text-gray-500">
+                                                                    SKU: {stockIn.product.sku}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell className="text-right font-medium">
+                                                        {stockIn.quantity ? stockIn.quantity.toLocaleString("id-ID") : 0}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {safeDisplay(stockIn.supplier || stockIn.product?.supplier?.name)}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {stockIn.transaction_date || stockIn.date ? 
+                                                            dayjs(stockIn.transaction_date || stockIn.date).format("DD MMM YYYY") : 
+                                                            "-"
+                                                        }
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <span className={`px-2 py-1 rounded-full text-xs ${
+                                                            stockIn.source ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-500'
+                                                        }`}>
+                                                            {safeDisplay(stockIn.source, 'Manual')}
+                                                        </span>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {safeDisplay(stockIn.user?.name)}
+                                                    </TableCell>
+                                                    <TableCell className="text-center">
+                                                        {auth.user.roles.includes("admin") && (
+                                                            <Button
+                                                                size="icon"
+                                                                variant="destructive"
+                                                                onClick={() => handleConfirmDelete(stockIn)}
+                                                                title="Hapus Stock In"
+                                                            >
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </Button>
+                                                        )}
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))
+                                        ) : (
+                                            <TableRow>
+                                                <TableCell colSpan={9} className="text-center py-16">
+                                                    <div className="flex flex-col items-center gap-4">
+                                                        <ArrowDownCircle className="h-16 w-16 text-gray-300" />
+                                                        <div>
+                                                            <h3 className="text-lg font-medium text-gray-900 mb-2">
+                                                                {hasFilters ? "Tidak ada data dengan filter ini" : "Belum ada Stock In"}
+                                                            </h3>
+                                                            <p className="text-gray-500 mb-4">
+                                                                {hasFilters ? "Coba ubah filter atau reset untuk melihat semua data" : "Mulai dengan menambahkan stock in baru"}
+                                                            </p>
+                                                            {hasFilters ? (
+                                                                <Button onClick={resetFilter} variant="outline">
+                                                                    <RotateCcw className="h-4 w-4 mr-2" />
+                                                                    Reset Filter
+                                                                </Button>
+                                                            ) : (
+                                                                auth.user.roles.includes("admin") || auth.user.roles.includes("staff")
+                                                            ) && (
+                                                                <Link href={route("stock-ins.create")}>
+                                                                    <Button className="bg-green-800 hover:bg-green-900">
+                                                                        <PlusCircle className="h-4 w-4 mr-2" />
+                                                                        Tambah Stock In
+                                                                    </Button>
+                                                                </Link>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </TableCell>
+                                            </TableRow>
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        )}
+
+                        {/* Pagination */}
+                        {!isLoading && stockIns?.links && stockIns.links.length > 3 && (
+                            <div className="flex justify-center mt-6">
+                                <Pagination>
+                                    <PaginationContent>
+                                        {stockIns.links.map((link, index) => {
+                                            const isPreviousLabel = link.label.includes("Previous");
+                                            const isNextLabel = link.label.includes("Next");
+                                            const isEllipsis = link.label.includes("...");
+
+                                            if (isPreviousLabel) {
+                                                return (
+                                                    <PaginationItem key={index}>
+                                                        <PaginationPrevious
+                                                            href={link.url || "#"}
+                                                            className={!link.url ? "opacity-50 cursor-not-allowed" : ""}
+                                                            onClick={(e) => {
+                                                                e.preventDefault();
+                                                                if (link.url && !isLoading) {
+                                                                    setIsLoading(true);
+                                                                    router.get(link.url, {}, {
+                                                                        preserveState: true,
+                                                                        replace: true,
+                                                                        onFinish: () => setIsLoading(false),
+                                                                    });
+                                                                }
+                                                            }}
+                                                        />
+                                                    </PaginationItem>
+                                                );
+                                            }
+
+                                            if (isNextLabel) {
+                                                return (
+                                                    <PaginationItem key={index}>
+                                                        <PaginationNext
+                                                            href={link.url || "#"}
+                                                            className={!link.url ? "opacity-50 cursor-not-allowed" : ""}
+                                                            onClick={(e) => {
+                                                                e.preventDefault();
+                                                                if (link.url && !isLoading) {
+                                                                    setIsLoading(true);
+                                                                    router.get(link.url, {}, {
+                                                                        preserveState: true,
+                                                                        replace: true,
+                                                                        onFinish: () => setIsLoading(false),
+                                                                    });
+                                                                }
+                                                            }}
+                                                        />
+                                                    </PaginationItem>
+                                                );
+                                            }
+
+                                            if (!isEllipsis) {
+                                                return (
+                                                    <PaginationItem key={index}>
+                                                        <PaginationLink
+                                                            href={link.url || "#"}
+                                                            isActive={link.active}
+                                                            onClick={(e) => {
+                                                                e.preventDefault();
+                                                                if (link.url && !isLoading) {
+                                                                    setIsLoading(true);
+                                                                    router.get(link.url, {}, {
+                                                                        preserveState: true,
+                                                                        replace: true,
+                                                                        onFinish: () => setIsLoading(false),
+                                                                    });
+                                                                }
+                                                            }}
+                                                        >
+                                                            {link.label}
+                                                        </PaginationLink>
+                                                    </PaginationItem>
+                                                );
+                                            }
+
+                                            return (
+                                                <PaginationItem key={index}>
+                                                    <PaginationEllipsis />
+                                                </PaginationItem>
+                                            );
+                                        })}
+                                    </PaginationContent>
+                                </Pagination>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            </div>
+
+            {/* Delete Confirmation Dialog */}
+            <Dialog open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Konfirmasi Hapus</DialogTitle>
+                        <DialogDescription>
+                            Apakah Anda yakin ingin menghapus Stock In ini? 
+                            Tindakan ini tidak dapat dibatalkan dan akan mengurangi stok produk.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <DialogClose asChild>
+                            <Button variant="outline">Batal</Button>
+                        </DialogClose>
+                        <Button variant="destructive" onClick={handleDelete}>
+                            Hapus
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Bulk Delete Dialog */}
+            <Dialog open={isBulkDeleteOpen} onOpenChange={setIsBulkDeleteOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Konfirmasi Hapus</DialogTitle>
+                        <DialogDescription>
+                            Apakah Anda yakin ingin menghapus {selectedIds.length} Stock In terpilih?
+                            Tindakan ini tidak dapat dibatalkan dan akan mengurangi stok produk.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <DialogClose asChild>
+                            <Button variant="outline">Batal</Button>
+                        </DialogClose>
+                        <Button variant="destructive" onClick={handleBulkDelete}>
+                            Hapus
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </Layout>
     );
 }

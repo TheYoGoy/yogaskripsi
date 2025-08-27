@@ -42,12 +42,12 @@ export default function PurchaseTransactionEdit({
     const [supplierPhone, setSupplierPhone] = useState("");
 
     const { data, setData, put, processing, errors } = useForm({
-        invoice_number: purchaseTransaction.invoice_number,
-        code: "",
+        invoice_number: purchaseTransaction.invoice_number || "",
+        code: purchaseTransaction.code || "",
         supplier_id: purchaseTransaction.supplier_id?.toString() ?? "",
         product_id: purchaseTransaction.product_id?.toString() ?? "",
-        quantity: purchaseTransaction.quantity ?? "",
-        price_per_unit: purchaseTransaction.price_per_unit ?? "",
+        quantity: purchaseTransaction.quantity?.toString() ?? "",
+        price_per_unit: purchaseTransaction.price_per_unit?.toString() ?? "",
         transaction_date: purchaseTransaction.transaction_date
             ? format(
                   new Date(purchaseTransaction.transaction_date),
@@ -61,25 +61,41 @@ export default function PurchaseTransactionEdit({
         e.preventDefault();
         put(route("purchase-transactions.update", purchaseTransaction.id), {
             onSuccess: () => {
-                toast.success("Purchase transaction updated successfully!");
+                toast.success("Transaksi pembelian berhasil diperbarui!");
+            },
+            onError: () => {
+                toast.error("Gagal memperbarui transaksi pembelian.");
             },
         });
     };
 
+    // Set data supplier awal
     useEffect(() => {
-        if (data.code) {
+        if (data.supplier_id && suppliers) {
+            const foundSupplier = suppliers.find(
+                (s) => s.id.toString() === data.supplier_id
+            );
+            setSupplierName(foundSupplier?.name ?? "");
+            setSupplierPhone(foundSupplier?.phone ?? "");
+        }
+    }, [data.supplier_id, suppliers]);
+
+    // Autofill saat kode berubah
+    useEffect(() => {
+        if (data.code && data.code !== purchaseTransaction.code) {
             axios
                 .get(route("products.searchByCode", { code: data.code }))
                 .then((response) => {
                     const product = response.data.product;
+                    
+                    if (!product) {
+                        toast.error("Produk tidak ditemukan");
+                        return;
+                    }
+
                     const foundSupplier = suppliers.find(
                         (s) => s.id === product.supplier_id
                     );
-
-                    if (!product) {
-                        toast.error("Product not found");
-                        return;
-                    }
 
                     setData((prevData) => ({
                         ...prevData,
@@ -90,18 +106,15 @@ export default function PurchaseTransactionEdit({
                     setSupplierName(foundSupplier?.name ?? "");
                     setSupplierPhone(foundSupplier?.phone ?? "");
 
-                    toast.success(
-                        `Product ${product.name} loaded from barcode`
-                    );
+                    toast.success(`Produk ${product.name} berhasil dimuat dari barcode`);
                 })
                 .catch(() => {
-                    toast.error("Product not found for this barcode.");
-                    setSupplierName("");
-                    setSupplierPhone("");
+                    toast.error("Produk tidak ditemukan untuk barcode ini.");
                 });
         }
-    }, [data.code, suppliers]);
+    }, [data.code, suppliers, purchaseTransaction.code]);
 
+    // Inisialisasi scanner QR
     useEffect(() => {
         const scanner = new Html5QrcodeScanner(
             "reader",
@@ -112,36 +125,50 @@ export default function PurchaseTransactionEdit({
         scanner.render(
             (decodedText) => {
                 setData("code", decodedText);
-                toast.success(`QR/Barcode detected: ${decodedText}`);
+                toast.success(`QR/Barcode terdeteksi: ${decodedText}`);
                 scanner.clear();
             },
             (errorMessage) => {
-                console.log(errorMessage);
+                if (!errorMessage.includes("No MultiFormat Readers") &&
+                    !errorMessage.includes("No code found")) {
+                    console.log(errorMessage);
+                }
             }
         );
 
         return () => {
             scanner.clear().catch((error) => console.error(error));
         };
-    }, []);
+    }, [setData]);
+
+    // Handle perubahan supplier
+    const handleSupplierChange = (value) => {
+        setData("supplier_id", value);
+        const foundSupplier = suppliers.find(s => s.id.toString() === value);
+        setSupplierName(foundSupplier?.name ?? "");
+        setSupplierPhone(foundSupplier?.phone ?? "");
+    };
 
     return (
         <Layout
             user={auth.user}
             header={
                 <h2 className="font-semibold text-xl text-gray-800 leading-tight">
-                    Edit Purchase Transaction
+                    Edit Transaksi Pembelian
                 </h2>
             }
         >
-            <Head title="Edit Purchase Transaction" />
+            <Head title="Edit Transaksi Pembelian" />
             <div className="py-6">
                 <div className="max-w-3xl mx-auto sm:px-6 lg:px-8">
                     <Card>
                         <CardHeader>
-                            <CardTitle>Edit Details</CardTitle>
+                            <CardTitle>Edit Detail Pembelian</CardTitle>
                             <CardDescription>
-                                Update your purchase transaction.
+                                Perbarui detail transaksi pembelian.
+                                <span className="block text-xs text-gray-500 mt-1">
+                                    Nomor Invoice: {purchaseTransaction.invoice_number}
+                                </span>
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
@@ -149,16 +176,18 @@ export default function PurchaseTransactionEdit({
                                 onSubmit={submit}
                                 className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4"
                             >
-                                {/* Scan Barcode */}
+                                {/* Input/Scan Barcode */}
                                 <div className="col-span-2">
-                                    <Label>Scan Barcode / Input Code</Label>
+                                    <Label htmlFor="code">Scan Barcode / Masukkan Kode</Label>
                                     <Input
+                                        id="code"
                                         type="text"
                                         value={data.code}
                                         onChange={(e) =>
                                             setData("code", e.target.value)
                                         }
-                                        placeholder="Scan barcode here"
+                                        placeholder="Scan barcode di sini atau ketik manual"
+                                        className="mt-1"
                                     />
                                     <InputError
                                         message={errors.code}
@@ -167,22 +196,30 @@ export default function PurchaseTransactionEdit({
                                 </div>
 
                                 {/* QR Scanner */}
-                                <div
-                                    id="reader"
-                                    className="col-span-2 my-4 rounded border p-2"
-                                />
+                                <div className="col-span-2">
+                                    <div className="border rounded-lg p-4 bg-gray-50">
+                                        <h3 className="text-sm font-medium mb-2">Pemindai QR/Barcode</h3>
+                                        <div
+                                            id="reader"
+                                            className="rounded border bg-white"
+                                        />
+                                        <p className="text-xs text-gray-500 mt-2">
+                                            Arahkan kamera ke barcode/QR produk
+                                        </p>
+                                    </div>
+                                </div>
 
                                 {/* Supplier */}
                                 <div className="col-span-2">
-                                    <Label>Supplier</Label>
+                                    <Label htmlFor="supplier_id" className="text-sm font-medium">
+                                        Supplier <span className="text-red-500">*</span>
+                                    </Label>
                                     <Select
-                                        onValueChange={(value) =>
-                                            setData("supplier_id", value)
-                                        }
+                                        onValueChange={handleSupplierChange}
                                         value={data.supplier_id}
                                     >
-                                        <SelectTrigger className="w-full">
-                                            <SelectValue placeholder="Select a supplier" />
+                                        <SelectTrigger className="w-full mt-1">
+                                            <SelectValue placeholder="Pilih supplier" />
                                         </SelectTrigger>
                                         <SelectContent>
                                             {suppliers.map((supplier) => (
@@ -201,39 +238,40 @@ export default function PurchaseTransactionEdit({
                                     />
                                 </div>
 
-                                {supplierName && (
-                                    <div>
-                                        <Label>Supplier Name (Auto)</Label>
-                                        <Input
-                                            value={supplierName}
-                                            readOnly
-                                            className="bg-gray-100 cursor-not-allowed"
-                                        />
+                                {/* Info Supplier */}
+                                {(supplierName || supplierPhone) && (
+                                    <div className="col-span-2 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                                        <h4 className="font-medium text-blue-900 mb-2">Informasi Supplier</h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                                            {supplierName && (
+                                                <div>
+                                                    <span className="text-gray-600">Nama:</span>
+                                                    <span className="ml-2 font-medium">{supplierName}</span>
+                                                </div>
+                                            )}
+                                            {supplierPhone && (
+                                                <div>
+                                                    <span className="text-gray-600">Telepon:</span>
+                                                    <span className="ml-2">{supplierPhone}</span>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 )}
 
-                                {supplierPhone && (
-                                    <div>
-                                        <Label>Supplier Phone (Auto)</Label>
-                                        <Input
-                                            value={supplierPhone}
-                                            readOnly
-                                            className="bg-gray-100 cursor-not-allowed"
-                                        />
-                                    </div>
-                                )}
-
-                                {/* Product */}
+                                {/* Produk */}
                                 <div className="col-span-2">
-                                    <Label>Product</Label>
+                                    <Label htmlFor="product_id" className="text-sm font-medium">
+                                        Produk <span className="text-red-500">*</span>
+                                    </Label>
                                     <Select
                                         onValueChange={(value) =>
                                             setData("product_id", value)
                                         }
                                         value={data.product_id}
                                     >
-                                        <SelectTrigger className="w-full">
-                                            <SelectValue placeholder="Select a product" />
+                                        <SelectTrigger className="w-full mt-1">
+                                            <SelectValue placeholder="Pilih produk" />
                                         </SelectTrigger>
                                         <SelectContent>
                                             {products.map((product) => (
@@ -241,8 +279,13 @@ export default function PurchaseTransactionEdit({
                                                     key={product.id}
                                                     value={product.id.toString()}
                                                 >
-                                                    {product.name} (Stock:{" "}
-                                                    {product.current_stock})
+                                                    <div className="flex flex-col">
+                                                        <span className="font-medium">{product.name}</span>
+                                                        <span className="text-xs text-gray-500">
+                                                            Stok: {product.current_stock || 0}
+                                                            {product.sku && ` | SKU: ${product.sku}`}
+                                                        </span>
+                                                    </div>
                                                 </SelectItem>
                                             ))}
                                         </SelectContent>
@@ -253,16 +296,22 @@ export default function PurchaseTransactionEdit({
                                     />
                                 </div>
 
-                                {/* Quantity */}
+                                {/* Jumlah */}
                                 <div>
-                                    <Label>Quantity</Label>
+                                    <Label htmlFor="quantity" className="text-sm font-medium">
+                                        Jumlah <span className="text-red-500">*</span>
+                                    </Label>
                                     <Input
+                                        id="quantity"
                                         type="number"
                                         value={data.quantity}
                                         onChange={(e) =>
                                             setData("quantity", e.target.value)
                                         }
                                         min="1"
+                                        step="1"
+                                        placeholder="Masukkan jumlah"
+                                        className="mt-1"
                                     />
                                     <InputError
                                         message={errors.quantity}
@@ -270,35 +319,22 @@ export default function PurchaseTransactionEdit({
                                     />
                                 </div>
 
-                                {/* Invoice */}
+                                {/* Harga Per Unit */}
                                 <div>
-                                    <Label>Invoice Number</Label>
+                                    <Label htmlFor="price_per_unit" className="text-sm font-medium">
+                                        Harga Per Unit <span className="text-red-500">*</span>
+                                    </Label>
                                     <Input
-                                        type="text"
-                                        value={data.invoice_number}
-                                        readOnly
-                                        className="bg-gray-100 cursor-not-allowed"
-                                    />
-                                    <InputError
-                                        message={errors.invoice_number}
-                                        className="mt-2"
-                                    />
-                                </div>
-
-                                {/* Price Per Unit */}
-                                <div>
-                                    <Label>Price Per Unit</Label>
-                                    <Input
+                                        id="price_per_unit"
                                         type="number"
                                         value={data.price_per_unit}
                                         onChange={(e) =>
-                                            setData(
-                                                "price_per_unit",
-                                                e.target.value
-                                            )
+                                            setData("price_per_unit", e.target.value)
                                         }
                                         step="0.01"
                                         min="0"
+                                        placeholder="Masukkan harga per unit"
+                                        className="mt-1"
                                     />
                                     <InputError
                                         message={errors.price_per_unit}
@@ -306,24 +342,48 @@ export default function PurchaseTransactionEdit({
                                     />
                                 </div>
 
-                                {/* Transaction Date */}
+                                {/* Nomor Invoice */}
                                 <div>
-                                    <Label>Transaction Date</Label>
+                                    <Label htmlFor="invoice_number" className="text-sm font-medium">
+                                        Nomor Invoice
+                                    </Label>
+                                    <Input
+                                        id="invoice_number"
+                                        type="text"
+                                        value={data.invoice_number}
+                                        onChange={(e) =>
+                                            setData("invoice_number", e.target.value)
+                                        }
+                                        placeholder="Nomor invoice"
+                                        className="mt-1"
+                                    />
+                                    <InputError
+                                        message={errors.invoice_number}
+                                        className="mt-2"
+                                    />
+                                </div>
+
+                                {/* Tanggal Transaksi */}
+                                <div>
+                                    <Label className="text-sm font-medium">
+                                        Tanggal Transaksi <span className="text-red-500">*</span>
+                                    </Label>
                                     <Popover>
                                         <PopoverTrigger asChild>
                                             <Button
                                                 variant="outline"
-                                                className="w-full justify-start text-left font-normal"
+                                                className={cn(
+                                                    "w-full justify-start text-left font-normal mt-1",
+                                                    !data.transaction_date && "text-muted-foreground"
+                                                )}
                                             >
                                                 <CalendarIcon className="mr-2 h-4 w-4" />
                                                 {data.transaction_date
                                                     ? format(
-                                                          new Date(
-                                                              data.transaction_date
-                                                          ),
+                                                          new Date(data.transaction_date),
                                                           "PPP"
                                                       )
-                                                    : "Pick a date"}
+                                                    : "Pilih tanggal"}
                                             </Button>
                                         </PopoverTrigger>
                                         <PopoverContent className="w-auto p-0">
@@ -331,21 +391,19 @@ export default function PurchaseTransactionEdit({
                                                 mode="single"
                                                 selected={
                                                     data.transaction_date
-                                                        ? new Date(
-                                                              data.transaction_date
-                                                          )
+                                                        ? new Date(data.transaction_date)
                                                         : undefined
                                                 }
-                                                onSelect={(date) =>
-                                                    setData(
-                                                        "transaction_date",
-                                                        format(
-                                                            date,
-                                                            "yyyy-MM-dd"
-                                                        )
-                                                    )
-                                                }
+                                                onSelect={(date) => {
+                                                    if (date) {
+                                                        setData(
+                                                            "transaction_date",
+                                                            format(date, "yyyy-MM-dd")
+                                                        );
+                                                    }
+                                                }}
                                                 initialFocus
+                                                disabled={(date) => date > new Date()}
                                             />
                                         </PopoverContent>
                                     </Popover>
@@ -355,15 +413,20 @@ export default function PurchaseTransactionEdit({
                                     />
                                 </div>
 
-                                {/* Notes */}
+                                {/* Catatan */}
                                 <div className="col-span-2">
-                                    <Label>Notes (Optional)</Label>
+                                    <Label htmlFor="notes" className="text-sm font-medium">
+                                        Catatan (Opsional)
+                                    </Label>
                                     <Input
+                                        id="notes"
                                         type="text"
                                         value={data.notes}
                                         onChange={(e) =>
                                             setData("notes", e.target.value)
                                         }
+                                        placeholder="Tambahkan catatan jika diperlukan"
+                                        className="mt-1"
                                     />
                                     <InputError
                                         message={errors.notes}
@@ -371,10 +434,25 @@ export default function PurchaseTransactionEdit({
                                     />
                                 </div>
 
-                                {/* Submit */}
-                                <div className="col-span-2 flex justify-end gap-2 mt-4">
+                                {/* Preview Total Harga */}
+                                {data.quantity && data.price_per_unit && (
+                                    <div className="col-span-2 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-sm font-medium text-gray-600">Total Harga:</span>
+                                            <span className="text-lg font-bold text-gray-900">
+                                                Rp {(parseFloat(data.quantity || 0) * parseFloat(data.price_per_unit || 0)).toLocaleString("id-ID")}
+                                            </span>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Tombol Aksi */}
+                                <div className="col-span-2 flex justify-end gap-2 mt-6 pt-4 border-t">
+                                    <Button type="button" variant="outline">
+                                        Batal
+                                    </Button>
                                     <Button type="submit" disabled={processing}>
-                                        Update Purchase
+                                        {processing ? "Memperbarui..." : "Perbarui Transaksi"}
                                     </Button>
                                 </div>
                             </form>

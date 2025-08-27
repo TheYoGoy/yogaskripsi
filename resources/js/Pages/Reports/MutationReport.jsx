@@ -26,7 +26,7 @@ import {
 } from "@/Components/ui/popover";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import { CalendarIcon, Download, FileText, AlertCircle } from "lucide-react";
+import { CalendarIcon, Download, FileText, AlertCircle, TrendingUp, TrendingDown, BarChart3 } from "lucide-react";
 import { useState } from "react";
 
 export default function MutationReport({
@@ -46,13 +46,13 @@ export default function MutationReport({
     const handleFilter = (e) => {
         e.preventDefault();
 
-        // Validate date range
+        // Validasi rentang tanggal
         if (
             data.start_date &&
             data.end_date &&
             new Date(data.start_date) > new Date(data.end_date)
         ) {
-            alert("Start date cannot be later than end date");
+            alert("Tanggal mulai tidak boleh lebih besar dari tanggal akhir");
             return;
         }
 
@@ -83,30 +83,101 @@ export default function MutationReport({
 
     const formatTransactionDate = (dateString) => {
         try {
-            return format(new Date(dateString), "PPP");
+            return format(new Date(dateString), "dd/MM/yyyy");
         } catch (error) {
             return dateString;
         }
     };
+
+    // Hitung statistik transaksi
+    const stockInCount = transactions.filter(t => t.type === "in").length;
+    const stockOutCount = transactions.filter(t => t.type === "out").length;
+    const totalQuantityIn = transactions
+        .filter(t => t.type === "in")
+        .reduce((sum, t) => sum + parseInt(t.quantity || 0), 0);
+    const totalQuantityOut = transactions
+        .filter(t => t.type === "out")
+        .reduce((sum, t) => sum + parseInt(t.quantity || 0), 0);
 
     return (
         <Layout
             user={auth.user}
             header={
                 <h2 className="font-bold text-3xl text-gray-800 leading-tight">
-                    Stock Mutation Report
+                    Laporan Mutasi Stok
                 </h2>
             }
         >
-            <Head title="Mutation Report" />
+            <Head title="Laporan Mutasi Stok" />
 
             <div className="py-8">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    {/* Card for mutation report filters */}
-                    <Card className="mb-8 p-4 shadow-lg rounded-lg border border-gray-200">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+                    
+                    {/* Statistik Cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                        <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white border-0 shadow-lg">
+                            <CardContent className="p-6">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-blue-100 text-sm">Total Transaksi</p>
+                                        <p className="text-3xl font-bold text-white">{transactions.length}</p>
+                                    </div>
+                                    <BarChart3 className="h-12 w-12 text-blue-200" />
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white border-0 shadow-lg">
+                            <CardContent className="p-6">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-green-100 text-sm">Stok Masuk</p>
+                                        <p className="text-3xl font-bold text-white">{stockInCount}</p>
+                                        <p className="text-xs text-green-200">Qty: {totalQuantityIn}</p>
+                                    </div>
+                                    <TrendingUp className="h-12 w-12 text-green-200" />
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        <Card className="bg-gradient-to-r from-red-500 to-red-600 text-white border-0 shadow-lg">
+                            <CardContent className="p-6">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-red-100 text-sm">Stok Keluar</p>
+                                        <p className="text-3xl font-bold text-white">{stockOutCount}</p>
+                                        <p className="text-xs text-red-200">Qty: {totalQuantityOut}</p>
+                                    </div>
+                                    <TrendingDown className="h-12 w-12 text-red-200" />
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        <Card className={`${(totalQuantityIn - totalQuantityOut) >= 0 ? 'bg-gradient-to-r from-emerald-500 to-emerald-600' : 'bg-gradient-to-r from-orange-500 to-orange-600'} text-white border-0 shadow-lg`}>
+                            <CardContent className="p-6">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className={`${(totalQuantityIn - totalQuantityOut) >= 0 ? 'text-emerald-100' : 'text-orange-100'} text-sm`}>Selisih</p>
+                                        <p className="text-3xl font-bold text-white">
+                                            {totalQuantityIn - totalQuantityOut >= 0 ? '+' : ''}{totalQuantityIn - totalQuantityOut}
+                                        </p>
+                                    </div>
+                                    <div className={`h-12 w-12 rounded-full flex items-center justify-center ${(totalQuantityIn - totalQuantityOut) >= 0 ? 'bg-emerald-400/30' : 'bg-orange-400/30'}`}>
+                                        {(totalQuantityIn - totalQuantityOut) >= 0 ? 
+                                            <TrendingUp className={`h-7 w-7 ${(totalQuantityIn - totalQuantityOut) >= 0 ? 'text-emerald-200' : 'text-orange-200'}`} /> : 
+                                            <TrendingDown className={`h-7 w-7 ${(totalQuantityIn - totalQuantityOut) >= 0 ? 'text-emerald-200' : 'text-orange-200'}`} />
+                                        }
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </div>
+
+                    {/* Filter Card */}
+                    <Card className="shadow-sm border border-gray-200">
                         <CardHeader className="pb-4">
-                            <CardTitle className="text-2xl font-semibold text-gray-700">
-                                Filter Stock Mutation
+                            <CardTitle className="text-xl font-semibold text-gray-800">
+                                Filter Laporan Mutasi
                             </CardTitle>
                         </CardHeader>
                         <CardContent>
@@ -114,13 +185,13 @@ export default function MutationReport({
                                 onSubmit={handleFilter}
                                 className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 items-end gap-6"
                             >
-                                {/* Filter by Product */}
+                                {/* Filter berdasarkan Produk */}
                                 <div className="space-y-2">
                                     <Label
                                         htmlFor="product_id"
-                                        className="text-gray-600 font-medium"
+                                        className="text-gray-700 font-medium text-sm"
                                     >
-                                        Product
+                                        Produk
                                     </Label>
                                     <Select
                                         onValueChange={(value) =>
@@ -129,11 +200,11 @@ export default function MutationReport({
                                         value={data.product_id}
                                     >
                                         <SelectTrigger className="w-full">
-                                            <SelectValue placeholder="Select a product" />
+                                            <SelectValue placeholder="Pilih produk" />
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="all">
-                                                All Products
+                                                Semua Produk
                                             </SelectItem>
                                             {products.map((product) => (
                                                 <SelectItem
@@ -147,13 +218,13 @@ export default function MutationReport({
                                     </Select>
                                 </div>
 
-                                {/* Filter by Start Date */}
+                                {/* Filter berdasarkan Tanggal Mulai */}
                                 <div className="space-y-2">
                                     <Label
                                         htmlFor="start_date"
-                                        className="text-gray-600 font-medium"
+                                        className="text-gray-700 font-medium text-sm"
                                     >
-                                        Start Date
+                                        Tanggal Mulai
                                     </Label>
                                     <Popover>
                                         <PopoverTrigger asChild>
@@ -163,7 +234,7 @@ export default function MutationReport({
                                                     "w-full justify-start text-left font-normal",
                                                     !data.start_date &&
                                                         "text-muted-foreground",
-                                                    "focus:ring-indigo-500 focus:border-indigo-500"
+                                                    "focus:ring-blue-500 focus:border-blue-500"
                                                 )}
                                             >
                                                 <CalendarIcon className="mr-2 h-4 w-4" />
@@ -172,10 +243,10 @@ export default function MutationReport({
                                                         new Date(
                                                             data.start_date
                                                         ),
-                                                        "PPP"
+                                                        "dd/MM/yyyy"
                                                     )
                                                 ) : (
-                                                    <span>Pick a date</span>
+                                                    <span>Pilih tanggal</span>
                                                 )}
                                             </Button>
                                         </PopoverTrigger>
@@ -206,13 +277,13 @@ export default function MutationReport({
                                     </Popover>
                                 </div>
 
-                                {/* Filter by End Date */}
+                                {/* Filter berdasarkan Tanggal Akhir */}
                                 <div className="space-y-2">
                                     <Label
                                         htmlFor="end_date"
-                                        className="text-gray-600 font-medium"
+                                        className="text-gray-700 font-medium text-sm"
                                     >
-                                        End Date
+                                        Tanggal Akhir
                                     </Label>
                                     <Popover>
                                         <PopoverTrigger asChild>
@@ -222,17 +293,17 @@ export default function MutationReport({
                                                     "w-full justify-start text-left font-normal",
                                                     !data.end_date &&
                                                         "text-muted-foreground",
-                                                    "focus:ring-indigo-500 focus:border-indigo-500"
+                                                    "focus:ring-blue-500 focus:border-blue-500"
                                                 )}
                                             >
                                                 <CalendarIcon className="mr-2 h-4 w-4" />
                                                 {data.end_date ? (
                                                     format(
                                                         new Date(data.end_date),
-                                                        "PPP"
+                                                        "dd/MM/yyyy"
                                                     )
                                                 ) : (
-                                                    <span>Pick a date</span>
+                                                    <span>Pilih tanggal</span>
                                                 )}
                                             </Button>
                                         </PopoverTrigger>
@@ -263,7 +334,7 @@ export default function MutationReport({
                                     </Popover>
                                 </div>
 
-                                {/* Buttons for filter and reset */}
+                                {/* Tombol Filter dan Reset */}
                                 <div className="col-span-full md:col-span-1 flex justify-end gap-3 pt-6 md:pt-0">
                                     <Button
                                         type="button"
@@ -272,57 +343,57 @@ export default function MutationReport({
                                         disabled={processing}
                                         className="w-full md:w-auto"
                                     >
-                                        Reset Filters
+                                        Reset Filter
                                     </Button>
                                     <Button
                                         type="submit"
                                         disabled={processing}
-                                        className="w-full md:w-auto bg-indigo-600 hover:bg-indigo-700 text-white"
+                                        className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white"
                                     >
                                         {processing
-                                            ? "Applying..."
-                                            : "Apply Filters"}
+                                            ? "Memuat..."
+                                            : "Terapkan Filter"}
                                     </Button>
                                 </div>
                             </form>
                         </CardContent>
                     </Card>
 
-                    {/* Card to display the mutation report table */}
-                    <Card className="shadow-lg rounded-lg border border-gray-200">
+                    {/* Tabel Laporan Mutasi */}
+                    <Card className="shadow-sm border border-gray-200">
                         <CardHeader className="pb-4">
-                            <CardTitle className="text-2xl font-semibold text-gray-700 flex items-center gap-2">
-                                <FileText className="h-6 w-6" />
-                                Stock Mutation Details
+                            <CardTitle className="text-xl font-semibold text-gray-800 flex items-center gap-2">
+                                <FileText className="h-5 w-5 text-gray-600" />
+                                Detail Mutasi Stok
                                 {transactions.length > 0 && (
                                     <span className="text-sm font-normal text-gray-500">
-                                        ({transactions.length} transactions)
+                                        ({transactions.length} transaksi)
                                     </span>
                                 )}
                             </CardTitle>
                         </CardHeader>
-                        <CardContent>
-                            <div className="overflow-x-auto rounded-md border">
-                                <Table className="min-w-full divide-y divide-gray-200">
+                        <CardContent className="p-0">
+                            <div className="overflow-x-auto">
+                                <Table className="min-w-full">
                                     <TableHeader className="bg-gray-50">
                                         <TableRow>
                                             <TableHead className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                Date
+                                                Tanggal
                                             </TableHead>
                                             <TableHead className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                Type
+                                                Tipe
                                             </TableHead>
                                             <TableHead className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                Product
+                                                Produk
                                             </TableHead>
-                                            <TableHead className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                Quantity
-                                            </TableHead>
-                                            <TableHead className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                Related Party
+                                            <TableHead className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                Kuantitas
                                             </TableHead>
                                             <TableHead className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                Recorded By
+                                                Pihak Terkait
+                                            </TableHead>
+                                            <TableHead className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                Dicatat Oleh
                                             </TableHead>
                                         </TableRow>
                                     </TableHeader>
@@ -341,7 +412,7 @@ export default function MutationReport({
                                                         </TableCell>
                                                         <TableCell className="px-6 py-4 whitespace-nowrap">
                                                             <span
-                                                                className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                                                                className={`px-3 py-1 rounded-full text-xs font-medium ${
                                                                     transaction.type ===
                                                                     "in"
                                                                         ? "bg-green-100 text-green-800"
@@ -350,18 +421,18 @@ export default function MutationReport({
                                                             >
                                                                 {transaction.type ===
                                                                 "in"
-                                                                    ? "Stock In"
-                                                                    : "Stock Out"}
+                                                                    ? "Stok Masuk"
+                                                                    : "Stok Keluar"}
                                                             </span>
                                                         </TableCell>
                                                         <TableCell className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                                                             {transaction.product
                                                                 ?.name ||
-                                                                "Unknown Product"}
+                                                                "Produk Tidak Diketahui"}
                                                         </TableCell>
-                                                        <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-right">
+                                                        <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-center">
                                                             <span
-                                                                className={`font-medium ${
+                                                                className={`font-semibold ${
                                                                     transaction.type ===
                                                                     "in"
                                                                         ? "text-green-600"
@@ -380,12 +451,12 @@ export default function MutationReport({
                                                         <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                                                             {transaction.supplier ||
                                                                 transaction.customer ||
-                                                                "-"}
+                                                                "Tidak Ada"}
                                                         </TableCell>
                                                         <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                                                             {transaction.user
                                                                 ?.name ||
-                                                                "Unknown User"}
+                                                                "User Tidak Diketahui"}
                                                         </TableCell>
                                                     </TableRow>
                                                 )
@@ -399,9 +470,7 @@ export default function MutationReport({
                                                     <div className="flex flex-col items-center gap-2">
                                                         <AlertCircle className="h-8 w-8 text-gray-400" />
                                                         <span>
-                                                            No stock mutations
-                                                            found matching the
-                                                            filters.
+                                                            Tidak ditemukan mutasi stok yang sesuai dengan filter.
                                                         </span>
                                                         <Button
                                                             variant="outline"
@@ -411,7 +480,7 @@ export default function MutationReport({
                                                             }
                                                             className="mt-2"
                                                         >
-                                                            Clear Filters
+                                                            Reset Filter
                                                         </Button>
                                                     </div>
                                                 </TableCell>
@@ -422,7 +491,7 @@ export default function MutationReport({
                             </div>
                         </CardContent>
 
-                        {/* Export Buttons */}
+                        {/* Tombol Export */}
                         <div className="p-6 flex justify-end items-center gap-4 border-t border-gray-200">
                             <a
                                 href={route("reports.mutation.exportPdf", data)}
@@ -436,8 +505,8 @@ export default function MutationReport({
                                 >
                                     <Download className="h-4 w-4" />
                                     {isExporting
-                                        ? "Exporting..."
-                                        : "Export PDF"}
+                                        ? "Mengekspor..."
+                                        : "Ekspor PDF"}
                                 </Button>
                             </a>
                             <a
@@ -455,8 +524,8 @@ export default function MutationReport({
                                 >
                                     <Download className="h-4 w-4" />
                                     {isExporting
-                                        ? "Exporting..."
-                                        : "Export Excel"}
+                                        ? "Mengekspor..."
+                                        : "Ekspor Excel"}
                                 </Button>
                             </a>
                         </div>

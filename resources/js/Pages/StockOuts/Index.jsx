@@ -45,10 +45,11 @@ import {
     ArrowUpNarrowWide,
     ArrowDownWideNarrow,
     ArrowUpDown,
-    SearchIcon,
+    Search as SearchIcon,
     ArrowUpCircle,
+    RefreshCw,
 } from "lucide-react";
-import { Checkbox } from "@/components/ui/checkbox";
+
 import {
     Pagination,
     PaginationContent,
@@ -59,45 +60,69 @@ import {
     PaginationEllipsis,
 } from "@/Components/ui/pagination";
 import { usePage } from "@inertiajs/react";
+import { Checkbox } from "@/components/ui/checkbox";
 
 export default function StockOutIndex({
     auth,
     stockOuts,
     flash,
     filters,
-    suppliers,
     products,
+    debug,
 }) {
     const { settings } = usePage().props;
     const [selectedIds, setSelectedIds] = useState([]);
     const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
     const { delete: inertiaDelete } = useForm();
 
+    // State untuk filter
     const [selectedDate, setSelectedDate] = useState(
-        filters.stockout_date ? new Date(filters.stockout_date) : null
+        filters.transaction_date ? new Date(filters.transaction_date) : null
     );
     const [searchQuery, setSearchQuery] = useState(filters.search || "");
-    const [selectedSupplier, setSelectedSupplier] = useState(
-        filters.supplier_id || "all"
-    );
+    const [customerQuery, setCustomerQuery] = useState(filters.customer || "");
     const [selectedProduct, setSelectedProduct] = useState(
         filters.product_id || "all"
     );
     const [perPage, setPerPage] = useState(filters.per_page || "10");
-
-    const [sortBy, setSortBy] = useState(filters.sort_by || "stockout_date");
+    const [sortBy, setSortBy] = useState(filters.sort_by || "id");
     const [sortDirection, setSortDirection] = useState(
         filters.sort_direction || "desc"
     );
-    const [isDeleting, setIsDeleting] = useState(false);
 
     const [stockOutToDelete, setStockOutToDelete] = useState(null);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
+    // Debug logging
     useEffect(() => {
-        applyFilter();
-    }, [searchQuery]);
+        console.log('=== STOCK OUT INDEX DEBUG ===');
+        console.log('stockOuts prop:', stockOuts);
+        console.log('filters prop:', filters);
+        console.log('debug info:', debug);
+        console.log('stockOuts.data length:', stockOuts?.data?.length || 0);
+        console.log('stockOuts.total:', stockOuts?.total || 0);
+        
+        if (stockOuts?.data?.length > 0) {
+            console.log('First stock out:', stockOuts.data[0]);
+        } else if (stockOuts?.total > 0) {
+            console.log('WARNING: Total > 0 but no data in current page!');
+        }
+        console.log('==========================');
+    }, [stockOuts, filters, debug]);
 
+    // Auto-search dengan debounce
+    useEffect(() => {
+        const timeoutId = setTimeout(() => {
+            if (searchQuery !== filters.search || customerQuery !== filters.customer) {
+                applyFilter();
+            }
+        }, 500); // 500ms debounce
+
+        return () => clearTimeout(timeoutId);
+    }, [searchQuery, customerQuery]);
+
+    // Toast notifications
     useEffect(() => {
         if (flash && flash.success) {
             toast({
@@ -121,9 +146,7 @@ export default function StockOutIndex({
     }, []);
 
     const handleDelete = useCallback(() => {
-        if (!stockOutToDelete || isDeleting) return;
-
-        setIsDeleting(true);
+        if (!stockOutToDelete) return;
 
         inertiaDelete(route("stock-outs.destroy", stockOutToDelete.id), {
             onSuccess: () => {
@@ -134,9 +157,9 @@ export default function StockOutIndex({
                 });
                 setIsDeleteModalOpen(false);
                 setStockOutToDelete(null);
-                setIsDeleting(false);
             },
             onError: (errors) => {
+                console.error('Delete errors:', errors);
                 toast({
                     title: "Gagal menghapus!",
                     description:
@@ -146,36 +169,55 @@ export default function StockOutIndex({
                 });
                 setIsDeleteModalOpen(false);
                 setStockOutToDelete(null);
-                setIsDeleting(false);
             },
         });
-    }, [stockOutToDelete, inertiaDelete, isDeleting]);
+    }, [stockOutToDelete, inertiaDelete]);
 
     const applyFilter = useCallback(() => {
+        const filterData = {
+            transaction_date: selectedDate
+                ? dayjs(selectedDate).format("YYYY-MM-DD")
+                : undefined,
+            search: searchQuery.trim() || undefined,
+            customer: customerQuery.trim() || undefined,
+            product_id: selectedProduct === "all" ? undefined : selectedProduct,
+            per_page: perPage,
+            sort_by: sortBy,
+            sort_direction: sortDirection,
+        };
+
+        // Filter out undefined values
+        Object.keys(filterData).forEach(key => {
+            if (filterData[key] === undefined) {
+                delete filterData[key];
+            }
+        });
+
+        console.log('Applying filter with data:', filterData);
+        setIsLoading(true);
+
         router.get(
             route("stock-outs.index"),
-            {
-                stockout_date: selectedDate
-                    ? dayjs(selectedDate).format("YYYY-MM-DD")
-                    : undefined,
-                search: searchQuery || undefined,
-                supplier_id:
-                    selectedSupplier === "all" ? undefined : selectedSupplier,
-                product_id:
-                    selectedProduct === "all" ? undefined : selectedProduct,
-                per_page: perPage,
-                sort_by: sortBy,
-                sort_direction: sortDirection,
-            },
+            filterData,
             {
                 preserveState: true,
                 replace: true,
+                onFinish: () => setIsLoading(false),
+                onError: (errors) => {
+                    console.error('Filter error:', errors);
+                    setIsLoading(false);
+                    toast({
+                        title: "Error",
+                        description: "Gagal memuat data",
+                        variant: "destructive",
+                    });
+                }
             }
         );
     }, [
         selectedDate,
         searchQuery,
-        selectedSupplier,
+        customerQuery,
         selectedProduct,
         perPage,
         sortBy,
@@ -183,22 +225,34 @@ export default function StockOutIndex({
     ]);
 
     const resetFilter = useCallback(() => {
+        console.log('Resetting all filters');
         setSelectedDate(null);
         setSearchQuery("");
-        setSelectedSupplier("all");
+        setCustomerQuery("");
         setSelectedProduct("all");
         setPerPage("10");
-        setSortBy("stockout_date");
+        setSortBy("id");
         setSortDirection("desc");
+        setIsLoading(true);
+        
         router.get(
             route("stock-outs.index"),
             {},
-            { preserveState: true, replace: true }
+            { 
+                preserveState: true, 
+                replace: true,
+                onFinish: () => setIsLoading(false),
+                onError: (errors) => {
+                    console.error('Reset error:', errors);
+                    setIsLoading(false);
+                }
+            }
         );
     }, []);
 
     const handleSort = useCallback(
         (column) => {
+            console.log('Sorting by:', column);
             if (sortBy === column) {
                 setSortDirection(sortDirection === "asc" ? "desc" : "asc");
             } else {
@@ -209,26 +263,60 @@ export default function StockOutIndex({
         [sortBy, sortDirection]
     );
 
+    // Apply filter ketika sortBy atau sortDirection berubah
+    useEffect(() => {
+        if (sortBy !== filters.sort_by || sortDirection !== filters.sort_direction) {
+            applyFilter();
+        }
+    }, [sortBy, sortDirection]);
+
+    const handleManualRefresh = () => {
+        console.log('Manual refresh triggered');
+        setIsLoading(true);
+        router.reload({
+            onFinish: () => setIsLoading(false),
+            onError: (errors) => {
+                console.error('Refresh error:', errors);
+                setIsLoading(false);
+            }
+        });
+    };
+
     const handleApplyFilter = () => {
+        const filterData = {
+            transaction_date: selectedDate
+                ? dayjs(selectedDate).format("YYYY-MM-DD")
+                : undefined,
+            search: searchQuery.trim() || undefined,
+            customer: customerQuery.trim() || undefined,
+            product_id: selectedProduct === "all" ? undefined : selectedProduct,
+            per_page: perPage,
+            sort_by: sortBy,
+            sort_direction: sortDirection,
+            page: 1, // Reset to first page when applying filters
+        };
+
+        // Filter out undefined values
+        Object.keys(filterData).forEach(key => {
+            if (filterData[key] === undefined) {
+                delete filterData[key];
+            }
+        });
+
+        console.log('Manual filter apply with data:', filterData);
+        setIsLoading(true);
+
         router.get(
             route("stock-outs.index"),
-            {
-                stockout_date: selectedDate
-                    ? dayjs(selectedDate).format("YYYY-MM-DD")
-                    : undefined,
-                search: searchQuery || undefined,
-                supplier_id:
-                    selectedSupplier === "all" ? undefined : selectedSupplier,
-                product_id:
-                    selectedProduct === "all" ? undefined : selectedProduct,
-                per_page: perPage,
-                sort_by: sortBy,
-                sort_direction: sortDirection,
-                page: 1,
-            },
+            filterData,
             {
                 preserveState: true,
                 replace: true,
+                onFinish: () => setIsLoading(false),
+                onError: (errors) => {
+                    console.error('Filter apply error:', errors);
+                    setIsLoading(false);
+                }
             }
         );
     };
@@ -245,6 +333,8 @@ export default function StockOutIndex({
     };
 
     const handleBulkDelete = () => {
+        if (selectedIds.length === 0) return;
+
         router.post(
             route("stock-outs.bulk-delete"),
             { ids: selectedIds },
@@ -259,7 +349,8 @@ export default function StockOutIndex({
                     });
                     setIsBulkDeleteOpen(false);
                 },
-                onError: () => {
+                onError: (errors) => {
+                    console.error('Bulk delete errors:', errors);
                     toast({
                         title: "Gagal menghapus!",
                         description:
@@ -272,13 +363,39 @@ export default function StockOutIndex({
         );
     };
 
+    // Helper function untuk safe display
+    const safeDisplay = (value, fallback = "-") => {
+        return value != null && value !== "" ? value : fallback;
+    };
+
+    // Cek apakah ada data
+    const hasData = stockOuts?.data && stockOuts.data.length > 0;
+    const hasFilters = searchQuery || customerQuery || selectedDate || selectedProduct !== 'all';
+
+    // Checkbox handlers
+    const handleSelectAll = (checked) => {
+        if (checked && hasData) {
+            setSelectedIds(stockOuts.data.map(item => item.id));
+        } else {
+            setSelectedIds([]);
+        }
+    };
+
+    const handleSelectItem = (itemId, checked) => {
+        if (checked) {
+            setSelectedIds(prev => [...prev, itemId]);
+        } else {
+            setSelectedIds(prev => prev.filter(id => id !== itemId));
+        }
+    };
+
     return (
         <Layout user={auth.user}>
             <Head title="Stock Out" />
             <div className="container max-w-6xl mx-auto px-4 py-8">
                 <Card className="shadow-lg border-none animate-in fade-in-0 slide-in-from-top-2 after:duration-500 rounded-xl">
                     <CardHeader className="pb-4 border-b">
-                        <Card className="relative w-full p-6 bg-red-700 overflow-hidden rounded-xl">
+                        <Card className="relative w-full p-6 bg-red-600 overflow-hidden rounded-xl">
                             <ArrowUpCircle className="absolute right-4 bottom-[-100px] text-white opacity-10 w-80 h-80 z-0" />
 
                             <div className="flex gap-4 items-center z-10">
@@ -288,152 +405,136 @@ export default function StockOutIndex({
                                         Stock Out
                                     </CardTitle>
                                     <CardDescription className="text-md text-white mt-1">
-                                        Kelola riwayat pengeluaran produk dari
-                                        stok.
+                                        Kelola riwayat stok keluar produk.
                                     </CardDescription>
+                                    {debug && (
+                                        <div className="text-xs text-white/80 mt-2">
+                                            Debug: {debug.total_in_db} total | {debug.query_total} filtered | 
+                                            Page: {stockOuts?.current_page} of {stockOuts?.last_page}
+                                            {hasFilters && <span className="ml-2">(Filtered)</span>}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
-                            {(auth.user.roles.includes("admin") ||
-                                auth.user.roles.includes("staff")) && (
-                                <div className="absolute right-6 top-1/2 -translate-y-1/2 z-20">
+                            <div className="absolute right-6 top-1/2 -translate-y-1/2 z-20 flex gap-2">
+                                <Button
+                                    onClick={handleManualRefresh}
+                                    variant="outline"
+                                    className="bg-white/10 border-white/20 text-white hover:bg-white/20"
+                                    disabled={isLoading}
+                                >
+                                    <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                                </Button>
+                                
+                                {(auth.user.roles.includes("admin") ||
+                                    auth.user.roles.includes("staff")) && (
                                     <Link href={route("stock-outs.create")}>
-                                        <Button className="flex items-center gap-2 bg-white text-red-700 hover:bg-gray-100 shadow-md transition-all duration-200 text-base py-2 px-6 rounded-lg">
-                                            <PlusCircle className="h-5 w-5" />{" "}
+                                        <Button className="flex items-center gap-2 bg-white text-red-600 hover:bg-gray-100 shadow-md transition-all duration-200 text-base py-2 px-6 rounded-lg">
+                                            <PlusCircle className="h-5 w-5" />
                                             Catat Stock Out Baru
                                         </Button>
                                     </Link>
-                                </div>
-                            )}
+                                )}
+                            </div>
                         </Card>
                     </CardHeader>
 
                     <CardContent className="space-y-6 pt-6">
                         {/* Filter & Search Section */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 p-4 border rounded-lg shadow-sm">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 p-4 border rounded-lg shadow-sm bg-gray-50">
                             {/* Search Input */}
                             <div className="flex flex-col gap-2">
-                                <label
-                                    htmlFor="search-input"
-                                    className="text-sm font-medium"
-                                >
+                                <label className="text-sm font-medium">
                                     Cari Stock Out
                                 </label>
                                 <div className="relative">
-                                    <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" />
+                                    <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                                     <Input
-                                        id="search-input"
                                         type="text"
-                                        placeholder="Produk, Customer, atau Kode..."
+                                        placeholder="Produk, Kode..."
                                         value={searchQuery}
-                                        onChange={(e) =>
-                                            setSearchQuery(e.target.value)
-                                        }
+                                        onChange={(e) => setSearchQuery(e.target.value)}
                                         className="pl-9 pr-3 py-2 rounded-md"
+                                        disabled={isLoading}
                                     />
                                 </div>
                             </div>
 
-                            {/* Date Filter */}
+                            {/* Customer Search */}
                             <div className="flex flex-col gap-2">
-                                <label
-                                    htmlFor="date-filter"
-                                    className="text-sm font-medium"
-                                >
-                                    Tanggal Stock Out
+                                <label className="text-sm font-medium">
+                                    Cari Customer
                                 </label>
-                                <DatePicker
-                                    id="date-filter"
-                                    value={selectedDate}
-                                    onChange={setSelectedDate}
-                                    className="border-gray-300 focus-visible:ring-red-700 focus-visible:border-red-700 w-full rounded-md"
+                                <Input
+                                    type="text"
+                                    placeholder="Nama customer..."
+                                    value={customerQuery}
+                                    onChange={(e) => setCustomerQuery(e.target.value)}
+                                    className="rounded-md"
+                                    disabled={isLoading}
                                 />
                             </div>
 
-                            {/* Supplier Filter */}
+                            {/* Date Filter */}
                             <div className="flex flex-col gap-2">
-                                <label
-                                    htmlFor="supplier-filter"
-                                    className="text-sm font-medium"
-                                >
-                                    Supplier
+                                <label className="text-sm font-medium">
+                                    Tanggal Stock Out
                                 </label>
-                                <Select
-                                    value={selectedSupplier}
-                                    onValueChange={setSelectedSupplier}
-                                >
-                                    <SelectTrigger
-                                        id="supplier-filter"
-                                        className="rounded-md"
-                                    >
-                                        <SelectValue placeholder="Pilih Supplier" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">
-                                            Semua Supplier
-                                        </SelectItem>
-                                        {suppliers?.map((supplier) => (
-                                            <SelectItem
-                                                key={supplier.id}
-                                                value={String(supplier.id)}
-                                            >
-                                                {supplier.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                <DatePicker
+                                    value={selectedDate}
+                                    onChange={setSelectedDate}
+                                    className="border-gray-300 focus-visible:ring-red-600 focus-visible:border-red-600 w-full rounded-md"
+                                    disabled={isLoading}
+                                />
                             </div>
 
                             {/* Product Filter */}
                             <div className="flex flex-col gap-2">
-                                <label
-                                    htmlFor="product-filter"
-                                    className="text-sm font-medium"
-                                >
+                                <label className="text-sm font-medium">
                                     Produk
                                 </label>
                                 <Select
                                     value={selectedProduct}
                                     onValueChange={setSelectedProduct}
+                                    disabled={isLoading}
                                 >
-                                    <SelectTrigger
-                                        id="product-filter"
-                                        className="rounded-md"
-                                    >
+                                    <SelectTrigger className="rounded-md">
                                         <SelectValue placeholder="Pilih Produk" />
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="all">
                                             Semua Produk
                                         </SelectItem>
-                                        {products?.map((product) => (
-                                            <SelectItem
-                                                key={product.id}
-                                                value={String(product.id)}
-                                            >
-                                                {product.name}
+                                        {products && products.length > 0 ? (
+                                            products.map((product) => (
+                                                <SelectItem
+                                                    key={product.id}
+                                                    value={String(product.id)}
+                                                >
+                                                    {product.name}
+                                                </SelectItem>
+                                            ))
+                                        ) : (
+                                            <SelectItem value="no-product" disabled>
+                                                Tidak ada produk
                                             </SelectItem>
-                                        ))}
+                                        )}
                                     </SelectContent>
                                 </Select>
                             </div>
 
                             {/* Per Page Selector */}
                             <div className="flex flex-col gap-2">
-                                <label
-                                    htmlFor="per-page-select"
-                                    className="text-sm font-medium"
-                                >
+                                <label className="text-sm font-medium">
                                     Tampilkan
                                 </label>
                                 <Select
                                     value={perPage}
                                     onValueChange={setPerPage}
+                                    disabled={isLoading}
                                 >
-                                    <SelectTrigger
-                                        id="per-page-select"
-                                        className="w-full rounded-md"
-                                    >
+                                    <SelectTrigger className="w-full rounded-md">
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -446,266 +547,285 @@ export default function StockOutIndex({
                             </div>
 
                             {/* Action Buttons for Filters */}
-                            <div className="col-span-full flex justify-end gap-3 mt-2 pt-4 border-t">
-                                <Button
-                                    variant="destructive"
-                                    disabled={selectedIds.length === 0}
-                                    onClick={() => setIsBulkDeleteOpen(true)}
-                                >
-                                    Hapus Terpilih ({selectedIds.length})
-                                </Button>
-                                <Button
-                                    onClick={resetFilter}
-                                    variant="outline"
-                                    className="gap-1 shadow-sm rounded-md"
-                                >
-                                    <RotateCcw className="h-4 w-4" /> Reset
-                                    Filter
-                                </Button>
-                                <Button
-                                    onClick={handleApplyFilter}
-                                    className="bg-red-700 hover:bg-red-800 text-white px-4 py-2 rounded-md shadow-sm"
-                                >
-                                    Terapkan Filter
-                                </Button>
+                            <div className="col-span-full flex justify-between items-center gap-3 mt-2 pt-4 border-t">
+                                <div className="flex gap-2">
+                                    {selectedIds.length > 0 && (
+                                        <Button
+                                            variant="destructive"
+                                            onClick={() => setIsBulkDeleteOpen(true)}
+                                            disabled={isLoading}
+                                        >
+                                            Hapus Terpilih ({selectedIds.length})
+                                        </Button>
+                                    )}
+                                </div>
+                                
+                                <div className="flex gap-2">
+                                    <Button
+                                        onClick={resetFilter}
+                                        variant="outline"
+                                        className="gap-1 shadow-sm rounded-md"
+                                        disabled={isLoading}
+                                    >
+                                        <RotateCcw className="h-4 w-4" /> 
+                                        Reset
+                                    </Button>
+                                    <Button
+                                        onClick={handleApplyFilter}
+                                        className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md shadow-sm"
+                                        disabled={isLoading}
+                                    >
+                                        {isLoading && <RefreshCw className="h-4 w-4 mr-2 animate-spin" />}
+                                        Terapkan Filter
+                                    </Button>
+                                </div>
                             </div>
                         </div>
 
                         <Separator className="my-6" />
 
+                        {/* Debug info display */}
+                        {debug && (
+                            <div className="p-3 bg-yellow-50 border border-yellow-200 rounded text-sm">
+                                <strong>Debug Info:</strong> 
+                                Total DB: {debug.total_in_db} | 
+                                Filtered: {debug.query_total} | 
+                                Results: {stockOuts?.data?.length || 0} |
+                                Page: {stockOuts?.current_page} of {stockOuts?.last_page} |
+                                Filters: {hasFilters ? 'Yes' : 'No'}
+                            </div>
+                        )}
+
+                        {/* Loading State */}
+                        {isLoading && (
+                            <div className="flex justify-center items-center py-8">
+                                <RefreshCw className="h-8 w-8 animate-spin text-red-600" />
+                                <span className="ml-2 text-red-600">Memuat data...</span>
+                            </div>
+                        )}
+
                         {/* Table Section */}
-                        <div className="rounded-lg border overflow-hidden shadow-sm">
-                            <Table className="min-w-full divide-y">
-                                <TableHeader className="bg-red-700">
-                                    <TableRow>
-                                        {/* CheckBox */}
-                                        <TableHead>
-                                            <Checkbox
-                                                checked={
-                                                    selectedIds.length ===
-                                                    stockOuts.data.length
-                                                }
-                                                onCheckedChange={(checked) => {
-                                                    if (checked) {
-                                                        setSelectedIds(
-                                                            stockOuts.data.map(
-                                                                (item) =>
-                                                                    item.id
-                                                            )
-                                                        );
-                                                    } else {
-                                                        setSelectedIds([]);
-                                                    }
-                                                }}
-                                            />
-                                        </TableHead>
+                        {!isLoading && (
+                            <div className="rounded-lg border overflow-hidden shadow-sm">
+                                <Table className="min-w-full divide-y">
+                                    <TableHeader className="bg-red-600">
+                                        <TableRow>
+                                            {/* CheckBox */}
+                                            <TableHead>
+                                                <Checkbox
+                                                    checked={hasData && selectedIds.length === stockOuts.data.length}
+                                                    onCheckedChange={handleSelectAll}
+                                                />
+                                            </TableHead>
 
-                                        {/* Kolom Kode */}
-                                        <TableHead
-                                            className="px-6 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider cursor-pointer transition-colors duration-200"
-                                            onClick={() => handleSort("code")}
-                                        >
-                                            <div className="flex items-center">
-                                                Kode {getSortIcon("code")}
-                                            </div>
-                                        </TableHead>
-
-                                        {/* Kolom Produk */}
-                                        <TableHead className="px-6 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">
-                                            <div className="flex items-center">
-                                                Produk
-                                            </div>
-                                        </TableHead>
-
-                                        {/* Kolom Kuantitas */}
-                                        <TableHead
-                                            className="px-6 py-3 text-right text-xs font-semibold text-white uppercase tracking-wider cursor-pointer transition-colors duration-200"
-                                            onClick={() =>
-                                                handleSort("quantity")
-                                            }
-                                        >
-                                            <div className="flex items-center justify-end">
-                                                Kuantitas{" "}
-                                                {getSortIcon("quantity")}
-                                            </div>
-                                        </TableHead>
-
-                                        {/* Kolom Customer */}
-                                        <TableHead className="px-6 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">
-                                            <div className="flex items-center">
-                                                Customer
-                                            </div>
-                                        </TableHead>
-
-                                        {/* Kolom Tanggal */}
-                                        <TableHead
-                                            className="px-6 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider cursor-pointer transition-colors duration-200"
-                                            onClick={() =>
-                                                handleSort("stockout_date")
-                                            }
-                                        >
-                                            <div className="flex items-center">
-                                                Tanggal{" "}
-                                                {getSortIcon("stockout_date")}
-                                            </div>
-                                        </TableHead>
-
-                                        {/* Kolom Dicatat Oleh */}
-                                        <TableHead className="px-6 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">
-                                            <div className="flex items-center">
-                                                Dicatat Oleh
-                                            </div>
-                                        </TableHead>
-
-                                        {/* Kolom Aksi */}
-                                        <TableHead className="px-6 py-3 text-center text-xs font-semibold text-white uppercase tracking-wider">
-                                            Aksi
-                                        </TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody className="divide-y">
-                                    {stockOuts.data.length > 0 ? (
-                                        stockOuts.data.map((stockOut) => (
-                                            <TableRow
-                                                key={stockOut.id}
-                                                className="hover:bg-gray-50 transition-colors duration-150"
+                                            {/* Sortable Columns */}
+                                            <TableHead
+                                                className="px-6 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider cursor-pointer transition-colors duration-200 hover:bg-red-700"
+                                                onClick={() => handleSort("code")}
                                             >
-                                                <TableCell>
-                                                    <Checkbox
-                                                        checked={selectedIds.includes(
-                                                            stockOut.id
-                                                        )}
-                                                        onCheckedChange={(
-                                                            checked
-                                                        ) => {
-                                                            if (checked) {
-                                                                setSelectedIds([
-                                                                    ...selectedIds,
-                                                                    stockOut.id,
-                                                                ]);
-                                                            } else {
-                                                                setSelectedIds(
-                                                                    selectedIds.filter(
-                                                                        (id) =>
-                                                                            id !==
-                                                                            stockOut.id
-                                                                    )
-                                                                );
-                                                            }
-                                                        }}
-                                                    />
-                                                </TableCell>
-                                                <TableCell className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                                    {stockOut.code || "-"}
-                                                </TableCell>
-                                                <TableCell className="px-6 py-4 whitespace-nowrap text-sm">
-                                                    {stockOut.product?.name ||
-                                                        "-"}
-                                                </TableCell>
-                                                <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-right">
-                                                    {stockOut.quantity?.toLocaleString(
-                                                        "id-ID"
-                                                    ) ?? 0}
-                                                </TableCell>
-                                                <TableCell className="px-6 py-4 whitespace-nowrap text-sm">
-                                                    {stockOut.customer || "-"}
-                                                </TableCell>
-                                                <TableCell className="px-6 py-4 whitespace-nowrap text-sm">
-                                                    {dayjs(
-                                                        stockOut.stockout_date
-                                                    ).format("DD MMM YYYY")}
-                                                </TableCell>
-                                                <TableCell className="px-6 py-4 whitespace-nowrap text-sm">
-                                                    {stockOut.user?.name || "-"}
-                                                </TableCell>
+                                                <div className="flex items-center">
+                                                    Kode {getSortIcon("code")}
+                                                </div>
+                                            </TableHead>
 
-                                                <TableCell className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
-                                                    {auth.user.roles.includes(
-                                                        "admin"
-                                                    ) && (
-                                                        <Button
-                                                            size="icon"
-                                                            variant="destructive"
-                                                            onClick={() =>
-                                                                handleConfirmDelete(
-                                                                    stockOut
+                                            <TableHead className="px-6 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">
+                                                Produk
+                                            </TableHead>
+
+                                            <TableHead
+                                                className="px-6 py-3 text-right text-xs font-semibold text-white uppercase tracking-wider cursor-pointer transition-colors duration-200 hover:bg-red-700"
+                                                onClick={() => handleSort("quantity")}
+                                            >
+                                                <div className="flex items-center justify-end">
+                                                    Qty {getSortIcon("quantity")}
+                                                </div>
+                                            </TableHead>
+
+                                            <TableHead
+                                                className="px-6 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider cursor-pointer transition-colors duration-200 hover:bg-red-700"
+                                                onClick={() => handleSort("customer")}
+                                            >
+                                                <div className="flex items-center">
+                                                    Customer {getSortIcon("customer")}
+                                                </div>
+                                            </TableHead>
+
+                                            <TableHead
+                                                className="px-6 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider cursor-pointer transition-colors duration-200 hover:bg-red-700"
+                                                onClick={() => handleSort("transaction_date")}
+                                            >
+                                                <div className="flex items-center">
+                                                    Tanggal {getSortIcon("transaction_date")}
+                                                </div>
+                                            </TableHead>
+
+                                            <TableHead className="px-6 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">
+                                                Dicatat Oleh
+                                            </TableHead>
+
+                                            <TableHead className="px-6 py-3 text-center text-xs font-semibold text-white uppercase tracking-wider">
+                                                Aksi
+                                            </TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody className="divide-y">
+                                        {hasData ? (
+                                            stockOuts.data.map((stockOut) => (
+                                                <TableRow
+                                                    key={stockOut.id}
+                                                    className="hover:bg-gray-50 transition-colors duration-150"
+                                                >
+                                                    <TableCell>
+                                                        <Checkbox
+                                                            checked={selectedIds.includes(stockOut.id)}
+                                                            onCheckedChange={(checked) => 
+                                                                handleSelectItem(stockOut.id, checked)
+                                                            }
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                                        {safeDisplay(stockOut.code)}
+                                                    </TableCell>
+                                                    <TableCell className="px-6 py-4 whitespace-nowrap text-sm">
+                                                        <div>
+                                                            <div className="font-medium">{safeDisplay(stockOut.product?.name)}</div>
+                                                            {stockOut.product?.sku && (
+                                                                <div className="text-xs text-gray-500">
+                                                                    SKU: {stockOut.product.sku}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium text-red-600">
+                                                        -{stockOut.quantity ? 
+                                                            stockOut.quantity.toLocaleString("id-ID") : 0
+                                                        }
+                                                    </TableCell>
+                                                    <TableCell className="px-6 py-4 whitespace-nowrap text-sm">
+                                                        {safeDisplay(stockOut.customer)}
+                                                    </TableCell>
+                                                    <TableCell className="px-6 py-4 whitespace-nowrap text-sm">
+                                                        {stockOut.transaction_date ? 
+                                                            dayjs(stockOut.transaction_date).format("DD MMM YYYY") :
+                                                            stockOut.date ? 
+                                                            dayjs(stockOut.date).format("DD MMM YYYY") : "-"
+                                                        }
+                                                    </TableCell>
+                                                    <TableCell className="px-6 py-4 whitespace-nowrap text-sm">
+                                                        {safeDisplay(stockOut.user?.name)}
+                                                    </TableCell>
+                                                    <TableCell className="px-6 py-4 whitespace-nowrap text-sm font-medium text-center">
+                                                        {auth.user.roles.includes("admin") && (
+                                                            <Button
+                                                                size="icon"
+                                                                variant="destructive"
+                                                                onClick={() => handleConfirmDelete(stockOut)}
+                                                                className="rounded-md"
+                                                                title="Hapus Stock Out"
+                                                            >
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </Button>
+                                                        )}
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))
+                                        ) : (
+                                            <TableRow>
+                                                <TableCell
+                                                    colSpan={8}
+                                                    className="text-center py-16"
+                                                >
+                                                    <div className="flex flex-col items-center gap-4">
+                                                        <ArrowUpCircle className="h-16 w-16 text-gray-300" />
+                                                        <div>
+                                                            <h3 className="text-lg font-medium text-gray-900 mb-2">
+                                                                {stockOuts?.total > 0 ? 
+                                                                    "Tidak ada data dengan filter ini" : 
+                                                                    "Belum ada Stock Out"
+                                                                }
+                                                            </h3>
+                                                            <p className="text-gray-500 mb-4">
+                                                                {stockOuts?.total > 0 ? 
+                                                                    "Coba ubah filter atau reset untuk melihat semua data" :
+                                                                    "Mulai dengan menambahkan stock out baru"
+                                                                }
+                                                            </p>
+                                                            {stockOuts?.total > 0 ? (
+                                                                <Button 
+                                                                    onClick={resetFilter}
+                                                                    variant="outline"
+                                                                >
+                                                                    <RotateCcw className="h-4 w-4 mr-2" />
+                                                                    Reset Filter
+                                                                </Button>
+                                                            ) : (
+                                                                (auth.user.roles.includes("admin") || 
+                                                                 auth.user.roles.includes("staff")) && (
+                                                                    <Link href={route("stock-outs.create")}>
+                                                                        <Button className="bg-red-600 hover:bg-red-700">
+                                                                            <PlusCircle className="h-4 w-4 mr-2" />
+                                                                            Tambah Stock Out
+                                                                        </Button>
+                                                                    </Link>
                                                                 )
-                                                            }
-                                                            className="rounded-md"
-                                                            disabled={
-                                                                isDeleting
-                                                            }
-                                                            title="Hapus Stock Out"
-                                                        >
-                                                            <Trash2 className="h-4 w-4" />
-                                                        </Button>
-                                                    )}
+                                                            )}
+                                                        </div>
+                                                    </div>
                                                 </TableCell>
                                             </TableRow>
-                                        ))
-                                    ) : (
-                                        <TableRow>
-                                            <TableCell
-                                                colSpan={8}
-                                                className="text-center py-10 text-lg text-gray-500"
-                                            >
-                                                Tidak ada stock out ditemukan.
-                                            </TableCell>
-                                        </TableRow>
-                                    )}
-                                </TableBody>
-                            </Table>
-                        </div>
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        )}
 
-                        <p className="text-sm text-end text-gray-600">
-                            Menampilkan {stockOuts.from} - {stockOuts.to} dari{" "}
-                            {stockOuts.total} data
-                        </p>
+                        {/* Results Info */}
+                        {!isLoading && stockOuts?.total > 0 && (
+                            <div className="flex justify-between items-center text-sm text-gray-600">
+                                <p>
+                                    Menampilkan {stockOuts.from} - {stockOuts.to} dari{" "}
+                                    {stockOuts.total} data
+                                    {hasFilters && " (terfilter)"}
+                                </p>
+                                <p>
+                                    Halaman {stockOuts.current_page} dari {stockOuts.last_page}
+                                </p>
+                            </div>
+                        )}
 
                         {/* Pagination Section */}
-                        {stockOuts.links && stockOuts.links.length > 3 && (
+                        {!isLoading && stockOuts?.links && stockOuts.links.length > 3 && (
                             <div className="flex justify-center mt-6">
                                 <Pagination>
                                     <PaginationContent>
                                         {stockOuts.links.map((link, index) => {
                                             const isPreviousLabel =
-                                                link.label.includes(
-                                                    "Previous"
-                                                ) ||
-                                                link.label.includes(
-                                                    "pagination.previous"
-                                                );
+                                                link.label.includes("Previous") ||
+                                                link.label.includes("pagination.previous");
                                             const isNextLabel =
                                                 link.label.includes("Next") ||
-                                                link.label.includes(
-                                                    "pagination.next"
-                                                );
-                                            const isEllipsis =
-                                                link.label.includes("...");
+                                                link.label.includes("pagination.next");
+                                            const isEllipsis = link.label.includes("...");
 
                                             if (isPreviousLabel) {
                                                 return (
                                                     <PaginationItem key={index}>
                                                         <PaginationPrevious
-                                                            href={
-                                                                link.url || "#"
-                                                            }
+                                                            href={link.url || "#"}
                                                             className={
                                                                 !link.url
                                                                     ? "opacity-50 cursor-not-allowed"
-                                                                    : "text-red-700 hover:bg-red-50"
+                                                                    : "text-red-600 hover:bg-red-50"
                                                             }
                                                             onClick={(e) => {
                                                                 e.preventDefault();
-                                                                if (link.url) {
-                                                                    router.get(
-                                                                        link.url,
-                                                                        {},
-                                                                        {
-                                                                            preserveState: true,
-                                                                            replace: true,
-                                                                        }
-                                                                    );
+                                                                if (link.url && !isLoading) {
+                                                                    setIsLoading(true);
+                                                                    router.get(link.url, {}, {
+                                                                        preserveState: true,
+                                                                        replace: true,
+                                                                        onFinish: () => setIsLoading(false),
+                                                                    });
                                                                 }
                                                             }}
                                                         />
@@ -717,25 +837,21 @@ export default function StockOutIndex({
                                                 return (
                                                     <PaginationItem key={index}>
                                                         <PaginationNext
-                                                            href={
-                                                                link.url ?? ""
-                                                            }
+                                                            href={link.url || "#"}
                                                             className={
                                                                 !link.url
                                                                     ? "opacity-50 cursor-not-allowed"
-                                                                    : "text-red-700 hover:bg-red-50"
+                                                                    : "text-red-600 hover:bg-red-50"
                                                             }
                                                             onClick={(e) => {
                                                                 e.preventDefault();
-                                                                if (link.url) {
-                                                                    router.get(
-                                                                        link.url,
-                                                                        {},
-                                                                        {
-                                                                            preserveState: true,
-                                                                            replace: true,
-                                                                        }
-                                                                    );
+                                                                if (link.url && !isLoading) {
+                                                                    setIsLoading(true);
+                                                                    router.get(link.url, {}, {
+                                                                        preserveState: true,
+                                                                        replace: true,
+                                                                        onFinish: () => setIsLoading(false),
+                                                                    });
                                                                 }
                                                             }}
                                                         />
@@ -747,30 +863,24 @@ export default function StockOutIndex({
                                                 return (
                                                     <PaginationItem key={index}>
                                                         <PaginationLink
-                                                            href={
-                                                                link.url || "#"
-                                                            }
-                                                            isActive={
-                                                                link.active
-                                                            }
+                                                            href={link.url || "#"}
+                                                            isActive={link.active}
                                                             className={
                                                                 !link.url
                                                                     ? "opacity-50 cursor-not-allowed"
                                                                     : link.active
-                                                                    ? "bg-red-700 text-white hover:bg-red-800"
-                                                                    : "text-red-700 hover:bg-red-50"
+                                                                    ? "bg-red-600 text-white hover:bg-red-700"
+                                                                    : "text-red-600 hover:bg-red-50"
                                                             }
                                                             onClick={(e) => {
                                                                 e.preventDefault();
-                                                                if (link.url) {
-                                                                    router.get(
-                                                                        link.url,
-                                                                        {},
-                                                                        {
-                                                                            preserveState: true,
-                                                                            replace: true,
-                                                                        }
-                                                                    );
+                                                                if (link.url && !isLoading) {
+                                                                    setIsLoading(true);
+                                                                    router.get(link.url, {}, {
+                                                                        preserveState: true,
+                                                                        replace: true,
+                                                                        onFinish: () => setIsLoading(false),
+                                                                    });
                                                                 }
                                                             }}
                                                         >
@@ -794,6 +904,41 @@ export default function StockOutIndex({
                 </Card>
             </div>
 
+            {/* Delete Confirmation Dialog */}
+            <Dialog open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Konfirmasi Hapus</DialogTitle>
+                        <DialogDescription>
+                            Apakah Anda yakin ingin menghapus Stock Out dengan kode{" "}
+                            <b>{stockOutToDelete?.code}</b>?{" "}
+                            <br />
+                            Tindakan ini tidak dapat dibatalkan dan akan
+                            menambah kembali stok produk.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="flex justify-end gap-2 mt-4">
+                        <DialogClose asChild>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                className="border-gray-300 hover:bg-gray-100 rounded-md"
+                            >
+                                Batal
+                            </Button>
+                        </DialogClose>
+                        <Button
+                            type="button"
+                            variant="destructive"
+                            onClick={handleDelete}
+                            className="bg-red-500 hover:bg-red-600 rounded-md"
+                        >
+                            Hapus
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             {/* Bulk Delete Dialog */}
             <Dialog open={isBulkDeleteOpen} onOpenChange={setIsBulkDeleteOpen}>
                 <DialogContent>
@@ -804,43 +949,7 @@ export default function StockOutIndex({
                             <b>{selectedIds.length}</b> Stock Out terpilih?{" "}
                             <br />
                             Tindakan ini tidak dapat dibatalkan dan akan
-                            mengembalikan stok produk.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <DialogFooter className="flex justify-end gap-2">
-                        <Button
-                            variant="outline"
-                            onClick={() => setIsBulkDeleteOpen(false)}
-                        >
-                            Batal
-                        </Button>
-                        <Button
-                            variant="destructive"
-                            onClick={handleBulkDelete}
-                        >
-                            Hapus
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            {/* Delete Confirmation Dialog */}
-            <Dialog
-                open={isDeleteModalOpen}
-                onOpenChange={setIsDeleteModalOpen}
-            >
-                <DialogContent className="sm:max-w-md p-6 rounded-lg shadow-lg">
-                    <DialogHeader>
-                        <DialogTitle className="text-xl font-bold text-red-700">
-                            Konfirmasi Hapus Stock Out
-                        </DialogTitle>
-                        <DialogDescription className="text-gray-600">
-                            Anda yakin ingin menghapus stock out untuk produk "
-                            <span className="font-semibold text-red-600">
-                                {stockOutToDelete?.product?.name}
-                            </span>
-                            "? Tindakan ini tidak dapat dibatalkan dan akan
-                            mengembalikan stok produk secara permanen.
+                            menambah kembali stok produk.
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter className="flex justify-end gap-2 mt-4">
@@ -848,7 +957,6 @@ export default function StockOutIndex({
                             <Button
                                 type="button"
                                 variant="outline"
-                                onClick={() => setIsDeleteModalOpen(false)}
                                 className="border-gray-300 hover:bg-gray-100 rounded-md"
                             >
                                 Batal
@@ -857,15 +965,13 @@ export default function StockOutIndex({
                         <Button
                             type="button"
                             variant="destructive"
-                            onClick={handleDelete}
-                            disabled={isDeleting}
+                            onClick={handleBulkDelete}
                             className="bg-red-500 hover:bg-red-600 rounded-md"
                         >
-                            {isDeleting ? "Menghapus..." : "Hapus"}
+                            Hapus
                         </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
         </Layout>
-    );
-}
+    );}

@@ -42,7 +42,7 @@ export const ManagementMenu = ({ userRole, isCollapsed }) => {
 
     return (
         <SidebarGroup>
-            <SidebarGroupLabel>Management</SidebarGroupLabel>
+            <SidebarGroupLabel>Manajemen</SidebarGroupLabel>
             <SidebarMenu>
                 {visibleItems.map((item) => (
                     <SidebarMenuItem key={item.name}>

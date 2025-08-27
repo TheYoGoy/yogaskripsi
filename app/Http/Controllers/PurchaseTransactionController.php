@@ -38,36 +38,78 @@ class PurchaseTransactionController extends Controller
             'page',
         ]);
 
-        $perPage = $filters['per_page'] ?? 10;
+        $perPage = (int) ($filters['per_page'] ?? 10);
         $sortBy = $filters['sort_by'] ?? 'transaction_date';
         $sortDirection = $filters['sort_direction'] ?? 'desc';
 
-        $validSortColumns = ['transaction_date', 'quantity', 'price_per_unit', 'total_price', 'created_at', 'invoice_number'];
+        $validSortColumns = [
+            'transaction_date', 'quantity', 'price_per_unit', 'total_price', 
+            'created_at', 'invoice_number', 'status'
+        ];
+        
         if (!in_array($sortBy, $validSortColumns)) {
             $sortBy = 'transaction_date';
         }
+        
         if (!in_array($sortDirection, ['asc', 'desc'])) {
             $sortDirection = 'desc';
         }
 
-        $purchaseTransactions = PurchaseTransaction::with(['product.supplier', 'supplier', 'user'])
-            ->when($filters['search'] ?? null, function ($query, $search) {
-                $query->whereHas('product', fn($q) => $q->where('name', 'like', "%$search%"))
-                    ->orWhereHas('supplier', fn($q) => $q->where('name', 'like', "%$search%"))
-                    ->orWhere('invoice_number', 'like', "%$search%"); // ← Tambahan: search by invoice
-            })
-            ->when($filters['transaction_date'] ?? null, fn($q, $date) => $q->whereDate('transaction_date', $date))
-            ->when($filters['supplier_id'] ?? null, fn($q, $supplierId) => $q->where('supplier_id', $supplierId))
-            ->when($filters['product_id'] ?? null, fn($q, $productId) => $q->where('product_id', $productId))
-            ->orderBy($sortBy, $sortDirection)
-            ->paginate($perPage)
-            ->withQueryString();
+        $query = PurchaseTransaction::with([
+            'product:id,name,sku,current_stock,supplier_id',
+            'product.supplier:id,name',
+            'supplier:id,name,phone',
+            'user:id,name',
+            'stockIns:id,purchase_transaction_id,quantity,transaction_date'
+        ]);
+
+        // Apply search filter
+        if (!empty($filters['search'])) {
+            $search = $filters['search'];
+            $query->where(function ($q) use ($search) {
+                $q->where('invoice_number', 'like', "%{$search}%")
+                  ->orWhereHas('product', function ($productQuery) use ($search) {
+                      $productQuery->where('name', 'like', "%{$search}%")
+                                   ->orWhere('sku', 'like', "%{$search}%");
+                  })
+                  ->orWhereHas('supplier', function ($supplierQuery) use ($search) {
+                      $supplierQuery->where('name', 'like', "%{$search}%");
+                  });
+            });
+        }
+
+        // Apply date filter
+        if (!empty($filters['transaction_date'])) {
+            $query->whereDate('transaction_date', $filters['transaction_date']);
+        }
+
+        // Apply supplier filter
+        if (!empty($filters['supplier_id']) && $filters['supplier_id'] !== 'all') {
+            $query->where('supplier_id', $filters['supplier_id']);
+        }
+
+        // Apply product filter
+        if (!empty($filters['product_id']) && $filters['product_id'] !== 'all') {
+            $query->where('product_id', $filters['product_id']);
+        }
+
+        // Apply sorting
+        $query->orderBy($sortBy, $sortDirection);
+
+        $purchaseTransactions = $query->paginate($perPage)->withQueryString();
+
+        // Add computed fields
+        $purchaseTransactions->getCollection()->transform(function ($transaction) {
+            $transaction->total_stock_in = $transaction->stockIns->sum('quantity');
+            $transaction->remaining_quantity = $transaction->quantity - $transaction->total_stock_in;
+            return $transaction;
+        });
 
         return Inertia::render('PurchaseTransactions/Index', [
             'purchaseTransactions' => $purchaseTransactions,
             'filters' => $filters,
-            'suppliers' => Supplier::select('id', 'name')->get(),
-            'products' => Product::select('id', 'name')->get(),
+            'suppliers' => Supplier::select('id', 'name')->orderBy('name')->get(),
+            'products' => Product::select('id', 'name')->orderBy('name')->get(),
             'flash' => [
                 'success' => session('success'),
                 'error' => session('error'),
@@ -81,8 +123,8 @@ class PurchaseTransactionController extends Controller
     public function create()
     {
         return Inertia::render('PurchaseTransactions/Create', [
-            'products' => Product::all(),
-            'suppliers' => Supplier::all(),
+            'products' => Product::with('supplier:id,name,phone')->orderBy('name')->get(),
+            'suppliers' => Supplier::select('id', 'name', 'phone', 'address')->orderBy('name')->get(),
         ]);
     }
 
@@ -97,18 +139,24 @@ class PurchaseTransactionController extends Controller
             'quantity' => 'required|integer|min:1',
             'price_per_unit' => 'required|numeric|min:0',
             'transaction_date' => 'nullable|date',
-            'notes' => 'nullable|string|max:1000', // ← Tambah max length
+            'notes' => 'nullable|string|max:1000',
+        ], [
+            'supplier_id.required' => 'Supplier harus dipilih',
+            'product_id.required' => 'Produk harus dipilih',
+            'quantity.required' => 'Jumlah harus diisi',
+            'quantity.min' => 'Jumlah minimal 1',
+            'price_per_unit.required' => 'Harga per unit harus diisi',
+            'price_per_unit.min' => 'Harga tidak boleh negatif',
         ]);
 
         $transactionDate = $validated['transaction_date'] ?? now();
         $dateStr = Carbon::parse($transactionDate)->format('ym');
 
         try {
-            // Gunakan DB transaction untuk atomicity
             $purchaseTransaction = DB::transaction(function () use ($validated, $transactionDate, $dateStr) {
-                // Ambil invoice terakhir untuk bulan dan tahun yang sama dengan lock
+                // Generate unique invoice number
                 $lastInvoice = PurchaseTransaction::where('invoice_number', 'like', "INV-{$dateStr}-%")
-                    ->lockForUpdate() // ← Prevent race condition
+                    ->lockForUpdate()
                     ->latest('id')
                     ->first();
 
@@ -120,6 +168,13 @@ class PurchaseTransactionController extends Controller
 
                 $increment = str_pad($nextNumber, 3, '0', STR_PAD_LEFT);
                 $invoiceNumber = "INV-{$dateStr}-{$increment}";
+
+                // Ensure invoice number is unique
+                while (PurchaseTransaction::where('invoice_number', $invoiceNumber)->exists()) {
+                    $nextNumber++;
+                    $increment = str_pad($nextNumber, 3, '0', STR_PAD_LEFT);
+                    $invoiceNumber = "INV-{$dateStr}-{$increment}";
+                }
 
                 return PurchaseTransaction::create([
                     'invoice_number' => $invoiceNumber,
@@ -135,13 +190,22 @@ class PurchaseTransactionController extends Controller
                 ]);
             });
 
+            Log::info('Purchase transaction created successfully', [
+                'id' => $purchaseTransaction->id,
+                'invoice_number' => $purchaseTransaction->invoice_number,
+                'user_id' => Auth::id()
+            ]);
+
             return redirect()
                 ->route('purchase-transactions.index')
-                ->with('success', 'Purchase transaction recorded successfully.');
+                ->with('success', "Transaksi pembelian berhasil dicatat dengan invoice: {$purchaseTransaction->invoice_number}");
+
         } catch (\Exception $e) {
             Log::error('Error creating purchase transaction', [
                 'user_id' => Auth::id(),
                 'error' => $e->getMessage(),
+                'line' => $e->getLine(),
+                'file' => $e->getFile(),
                 'data' => $validated
             ]);
 
@@ -156,10 +220,16 @@ class PurchaseTransactionController extends Controller
      */
     public function edit(PurchaseTransaction $purchaseTransaction)
     {
+        $purchaseTransaction->load([
+            'product:id,name,current_stock,supplier_id',
+            'supplier:id,name,phone',
+            'stockIns:id,purchase_transaction_id,quantity,transaction_date,code'
+        ]);
+
         return Inertia::render('PurchaseTransactions/Edit', [
-            'purchaseTransaction' => $purchaseTransaction->load('product', 'supplier'),
-            'products' => Product::select('id', 'name', 'current_stock', 'supplier_id')->get(),
-            'suppliers' => Supplier::select('id', 'name', 'phone')->get(),
+            'purchaseTransaction' => $purchaseTransaction,
+            'products' => Product::select('id', 'name', 'current_stock', 'supplier_id')->orderBy('name')->get(),
+            'suppliers' => Supplier::select('id', 'name', 'phone')->orderBy('name')->get(),
         ]);
     }
 
@@ -169,23 +239,50 @@ class PurchaseTransactionController extends Controller
     public function update(Request $request, PurchaseTransaction $purchaseTransaction)
     {
         $validated = $request->validate([
-            'invoice_number' => 'required|string|max:255|unique:purchase_transactions,invoice_number,' . $purchaseTransaction->id, // ← Tambah unique validation
+            'invoice_number' => [
+                'required',
+                'string',
+                'max:255',
+                'unique:purchase_transactions,invoice_number,' . $purchaseTransaction->id
+            ],
             'supplier_id' => 'required|exists:suppliers,id',
             'product_id' => 'required|exists:products,id',
             'quantity' => 'required|integer|min:1',
             'price_per_unit' => 'required|numeric|min:0',
             'transaction_date' => 'required|date',
             'notes' => 'nullable|string|max:1000',
+            'status' => 'nullable|in:pending,completed',
         ]);
 
         $validated['total_price'] = $validated['quantity'] * $validated['price_per_unit'];
 
         try {
-            $purchaseTransaction->update($validated);
+            DB::transaction(function () use ($purchaseTransaction, $validated) {
+                $oldQuantity = $purchaseTransaction->quantity;
+                $newQuantity = $validated['quantity'];
+                
+                $purchaseTransaction->update($validated);
+                
+                // Update status based on stock ins
+                $totalStockIn = $purchaseTransaction->stockIns()->sum('quantity');
+                if ($totalStockIn >= $newQuantity) {
+                    $purchaseTransaction->update(['status' => 'completed']);
+                } else {
+                    $purchaseTransaction->update(['status' => 'pending']);
+                }
+                
+                Log::info('Purchase transaction updated', [
+                    'id' => $purchaseTransaction->id,
+                    'old_quantity' => $oldQuantity,
+                    'new_quantity' => $newQuantity,
+                    'user_id' => Auth::id()
+                ]);
+            });
 
             return redirect()
                 ->route('purchase-transactions.index')
-                ->with('success', 'Purchase transaction updated successfully.');
+                ->with('success', 'Transaksi pembelian berhasil diupdate.');
+
         } catch (\Exception $e) {
             Log::error('Error updating purchase transaction', [
                 'transaction_id' => $purchaseTransaction->id,
@@ -205,12 +302,27 @@ class PurchaseTransactionController extends Controller
     public function destroy(PurchaseTransaction $purchaseTransaction)
     {
         try {
-            $invoiceNumber = $purchaseTransaction->invoice_number;
-            $purchaseTransaction->delete();
+            DB::transaction(function () use ($purchaseTransaction) {
+                $invoiceNumber = $purchaseTransaction->invoice_number;
+                
+                // Check if there are related stock ins
+                $stockInsCount = $purchaseTransaction->stockIns()->count();
+                if ($stockInsCount > 0) {
+                    throw new \Exception("Tidak dapat menghapus transaksi yang sudah memiliki stock in. Hapus stock in terkait terlebih dahulu.");
+                }
+                
+                $purchaseTransaction->delete();
+                
+                Log::info('Purchase transaction deleted', [
+                    'invoice_number' => $invoiceNumber,
+                    'user_id' => Auth::id()
+                ]);
+            });
 
             return redirect()
                 ->route('purchase-transactions.index')
-                ->with('success', "Transaksi {$invoiceNumber} berhasil dihapus.");
+                ->with('success', "Transaksi {$purchaseTransaction->invoice_number} berhasil dihapus.");
+
         } catch (\Exception $e) {
             Log::error('Error deleting purchase transaction', [
                 'transaction_id' => $purchaseTransaction->id,
@@ -218,7 +330,7 @@ class PurchaseTransactionController extends Controller
                 'error' => $e->getMessage()
             ]);
 
-            return back()->with('error', 'Gagal menghapus transaksi pembelian.');
+            return back()->with('error', $e->getMessage());
         }
     }
 
@@ -228,15 +340,35 @@ class PurchaseTransactionController extends Controller
     public function bulkDelete(Request $request)
     {
         $request->validate([
-            'ids' => 'required|array|min:1|max:100', // ← Tambah batas maksimal
+            'ids' => 'required|array|min:1|max:100',
             'ids.*' => 'exists:purchase_transactions,id',
         ]);
 
         try {
-            $count = PurchaseTransaction::whereIn('id', $request->ids)->count();
-            PurchaseTransaction::whereIn('id', $request->ids)->delete();
+            DB::transaction(function () use ($request) {
+                $transactions = PurchaseTransaction::whereIn('id', $request->ids)
+                    ->withCount('stockIns')
+                    ->get();
+                
+                $hasStockIns = $transactions->where('stock_ins_count', '>', 0);
+                if ($hasStockIns->count() > 0) {
+                    $invoices = $hasStockIns->pluck('invoice_number')->take(3)->join(', ');
+                    throw new \Exception("Tidak dapat menghapus transaksi yang sudah memiliki stock in: {$invoices}" . 
+                        ($hasStockIns->count() > 3 ? ' dan lainnya.' : '.'));
+                }
+                
+                $count = $transactions->count();
+                PurchaseTransaction::whereIn('id', $request->ids)->delete();
+                
+                Log::info('Bulk delete purchase transactions', [
+                    'count' => $count,
+                    'user_id' => Auth::id()
+                ]);
+            });
 
+            $count = count($request->ids);
             return back()->with('success', "{$count} transaksi pembelian berhasil dihapus.");
+
         } catch (\Exception $e) {
             Log::error('Error bulk deleting purchase transactions', [
                 'ids' => $request->ids,
@@ -244,20 +376,8 @@ class PurchaseTransactionController extends Controller
                 'error' => $e->getMessage()
             ]);
 
-            return back()->with('error', 'Gagal menghapus transaksi pembelian terpilih.');
+            return back()->with('error', $e->getMessage());
         }
-    }
-
-    /**
-     * Tampilkan barcode transaksi pembelian.
-     */
-    public function barcode(PurchaseTransaction $purchaseTransaction)
-    {
-        $this->authorize('view', $purchaseTransaction);
-
-        return Inertia::render('PurchaseTransactions/Barcode', [
-            'purchaseTransaction' => $purchaseTransaction,
-        ]);
     }
 
     /**
@@ -266,7 +386,7 @@ class PurchaseTransactionController extends Controller
     public function generateBarcode(PurchaseTransaction $purchaseTransaction)
     {
         try {
-            $this->authorize('view', $purchaseTransaction); // ← Tambah authorization
+            $this->authorize('view', $purchaseTransaction);
 
             $barcode = DNS1D::getBarcodeSVG($purchaseTransaction->invoice_number, 'C128', 2, 100);
 
@@ -274,6 +394,7 @@ class PurchaseTransactionController extends Controller
                 'svg' => $barcode,
                 'invoice_number' => $purchaseTransaction->invoice_number
             ]);
+
         } catch (\Exception $e) {
             Log::error('Error generating barcode', [
                 'transaction_id' => $purchaseTransaction->id,
@@ -290,7 +411,7 @@ class PurchaseTransactionController extends Controller
     public function downloadBarcode(PurchaseTransaction $purchaseTransaction)
     {
         try {
-            $this->authorize('view', $purchaseTransaction); // ← Tambah authorization
+            $this->authorize('view', $purchaseTransaction);
 
             $svg = QrCode::format('svg')
                 ->size(300)
@@ -301,6 +422,7 @@ class PurchaseTransactionController extends Controller
             return response($svg)
                 ->header('Content-Type', 'image/svg+xml')
                 ->header('Content-Disposition', 'attachment; filename="' . $filename . '"');
+
         } catch (\Exception $e) {
             Log::error('Error downloading barcode', [
                 'transaction_id' => $purchaseTransaction->id,
@@ -316,14 +438,11 @@ class PurchaseTransactionController extends Controller
      */
     public function printInvoice(PurchaseTransaction $purchaseTransaction)
     {
-        // Authorize user dapat melihat transaksi ini
         $this->authorize('view', $purchaseTransaction);
 
-        // Load semua relasi yang diperlukan
         $purchaseTransaction->load(['product', 'supplier', 'user']);
 
         try {
-            // Generate PDF dengan konfigurasi yang optimal
             $pdf = Pdf::loadView('purchase_transactions.invoice', [
                 'transaction' => $purchaseTransaction,
             ])
@@ -335,12 +454,11 @@ class PurchaseTransactionController extends Controller
                     'isPhpEnabled' => true
                 ]);
 
-            // Clean filename untuk menghindari karakter ilegal
             $filename = "invoice_" . preg_replace('/[^A-Za-z0-9\-_]/', '_', $purchaseTransaction->invoice_number) . ".pdf";
 
             return $pdf->stream($filename);
+
         } catch (\Exception $e) {
-            // Log error untuk debugging
             Log::error('Error generating PDF invoice', [
                 'transaction_id' => $purchaseTransaction->id,
                 'invoice_number' => $purchaseTransaction->invoice_number,
@@ -348,41 +466,74 @@ class PurchaseTransactionController extends Controller
                 'error' => $e->getMessage()
             ]);
 
-            // Return error response
             return back()->with('error', 'Gagal generate invoice PDF. Silakan coba lagi.');
         }
     }
 
     /**
-     * Alternative: Download PDF instead of stream
+     * Search product by code untuk autofill
      */
-    public function downloadInvoice(PurchaseTransaction $purchaseTransaction)
+    public function searchProductByCode($code)
     {
-        $this->authorize('view', $purchaseTransaction);
-
-        $purchaseTransaction->load(['product', 'supplier', 'user']);
-
         try {
-            $pdf = Pdf::loadView('purchase_transactions.invoice', [
-                'transaction' => $purchaseTransaction,
-            ])
-                ->setPaper('a4', 'portrait')
-                ->setOptions([
-                    'dpi' => 150,
-                    'defaultFont' => 'sans-serif'
-                ]);
+            $product = Product::with('supplier:id,name,phone,address')
+                ->where('code', $code)
+                ->orWhere('sku', $code)
+                ->first();
 
-            $filename = "invoice_" . preg_replace('/[^A-Za-z0-9\-_]/', '_', $purchaseTransaction->invoice_number) . ".pdf";
+            if (!$product) {
+                return response()->json([
+                    'message' => 'Produk tidak ditemukan'
+                ], 404);
+            }
 
-            return $pdf->download($filename);
+            return response()->json([
+                'product' => [
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'sku' => $product->sku,
+                    'current_stock' => $product->current_stock,
+                    'supplier_id' => $product->supplier_id,
+                    'supplier' => $product->supplier
+                ]
+            ]);
+
         } catch (\Exception $e) {
-            Log::error('Error downloading PDF invoice', [
-                'transaction_id' => $purchaseTransaction->id,
-                'user_id' => Auth::id(),
+            Log::error('Error searching product by code', [
+                'code' => $code,
                 'error' => $e->getMessage()
             ]);
 
-            return back()->with('error', 'Gagal download invoice PDF.');
+            return response()->json([
+                'message' => 'Terjadi kesalahan server'
+            ], 500);
+        }
+    }
+
+    /**
+     * Get purchase transaction status summary
+     */
+    public function getStatusSummary()
+    {
+        try {
+            $summary = [
+                'total_transactions' => PurchaseTransaction::count(),
+                'pending_transactions' => PurchaseTransaction::where('status', 'pending')->count(),
+                'completed_transactions' => PurchaseTransaction::where('status', 'completed')->count(),
+                'total_value' => PurchaseTransaction::sum('total_price'),
+                'this_month' => PurchaseTransaction::whereMonth('transaction_date', now()->month)
+                    ->whereYear('transaction_date', now()->year)
+                    ->sum('total_price'),
+            ];
+
+            return response()->json($summary);
+
+        } catch (\Exception $e) {
+            Log::error('Error getting purchase transaction summary', [
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json(['error' => 'Gagal mengambil ringkasan'], 500);
         }
     }
 }

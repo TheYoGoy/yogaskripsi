@@ -35,12 +35,14 @@ import { Separator } from "@/Components/ui/separator";
 import {
     Settings,
     RotateCcw,
-    SearchIcon,
+    Search,
     SquarePen,
     Save,
     XCircle,
     Calculator,
     Zap,
+    FileText,
+    Download,
 } from "lucide-react";
 import {
     Select,
@@ -222,6 +224,57 @@ export default function EoqRopIndex({
         );
     }, []);
 
+    // Export handlers
+    const handleExportExcel = useCallback(() => {
+        const params = new URLSearchParams();
+        
+        if (searchQuery) {
+            params.append('search', searchQuery);
+        }
+        
+        if (selectedDate) {
+            params.append('created_at', dayjs(selectedDate).format("YYYY-MM-DD"));
+        }
+        
+        const queryString = params.toString();
+        const url = queryString 
+            ? `${route("eoq-rop.export-excel")}?${queryString}`
+            : route("eoq-rop.export-excel");
+        
+        window.location.href = url;
+        
+        toast({
+            title: "Export Excel",
+            description: "File Excel sedang didownload...",
+            variant: "success",
+        });
+    }, [searchQuery, selectedDate]);
+
+    const handleExportPdf = useCallback(() => {
+        const params = new URLSearchParams();
+        
+        if (searchQuery) {
+            params.append('search', searchQuery);
+        }
+        
+        if (selectedDate) {
+            params.append('created_at', dayjs(selectedDate).format("YYYY-MM-DD"));
+        }
+        
+        const queryString = params.toString();
+        const url = queryString 
+            ? `${route("eoq-rop.export-pdf")}?${queryString}`
+            : route("eoq-rop.export-pdf");
+        
+        window.location.href = url;
+        
+        toast({
+            title: "Export PDF",
+            description: "File PDF sedang didownload...",
+            variant: "success",
+        });
+    }, [searchQuery, selectedDate]);
+
     // Helper function for parsing HTML entities
     const getLabelString = (label) => {
         const doc = new DOMParser().parseFromString(label, "text/html");
@@ -285,7 +338,7 @@ export default function EoqRopIndex({
                                     Cari Produk
                                 </Label>
                                 <div className="relative">
-                                    <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                                     <Input
                                         id="search-input"
                                         type="text"
@@ -343,7 +396,28 @@ export default function EoqRopIndex({
                             </div>
 
                             {/* Action Buttons */}
-                            <div className="col-span-full flex justify-end gap-3 mt-2 pt-4 border-t">
+                            <div className="col-span-full flex justify-between items-center mt-2 pt-4 border-t">
+                                {/* Export Buttons */}
+                                <div className="flex gap-2">
+                                    <Button
+                                        onClick={handleExportExcel}
+                                        variant="outline"
+                                        className="gap-2 border-green-300 text-green-700 hover:bg-green-50 transition-colors duration-200 shadow-sm rounded-md"
+                                    >
+                                        <FileText className="h-4 w-4" />
+                                        Export Excel
+                                    </Button>
+                                    <Button
+                                        onClick={handleExportPdf}
+                                        variant="outline"
+                                        className="gap-2 border-red-300 text-red-700 hover:bg-red-50 transition-colors duration-200 shadow-sm rounded-md"
+                                    >
+                                        <Download className="h-4 w-4" />
+                                        Export PDF
+                                    </Button>
+                                </div>
+
+                                {/* Reset Filter Button */}
                                 <Button
                                     onClick={resetFilters}
                                     variant="outline"
