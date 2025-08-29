@@ -3,6 +3,7 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Console\Scheduling\Schedule;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -12,29 +13,25 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        // INERTIA MIDDLEWARE - INI YANG KURANG!
+        // INERTIA MIDDLEWARE
         $middleware->web(append: [
             \App\Http\Middleware\HandleInertiaRequests::class,
         ]);
 
         // Custom middleware aliases
         $middleware->alias([
-            // Custom role/permission middleware (tambahan untuk Spatie)
             'check.role' => \App\Http\Middleware\CheckRole::class,
             'check.permission' => \App\Http\Middleware\CheckPermission::class,
-
-            // Spatie Permission middleware
             'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
             'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
         ]);
-
-        // CATATAN: Laravel Breeze sudah handle:
-        // - 'auth' middleware
-        // - 'guest' middleware  
-        // - 'verified' middleware
-        // - Web middleware group (session, csrf, etc)
-        // Jadi kita tidak perlu define ulang!
+    })
+    ->withSchedule(function (Schedule $schedule) {
+        // Cek low stock setiap 4 jam
+        $schedule->command('stock:check-low')
+            ->everyFourHours()
+            ->withoutOverlapping();
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //

@@ -69,7 +69,6 @@ export default function StockInIndex({
     filters,
     suppliers,
     products,
-    debug,
 }) {
     const { settings } = usePage().props;
     const [selectedIds, setSelectedIds] = useState([]);
@@ -96,23 +95,6 @@ export default function StockInIndex({
 
     const [stockInToDelete, setStockInToDelete] = useState(null);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-
-    // Debug logging
-    useEffect(() => {
-        console.log('=== STOCK IN INDEX DEBUG ===');
-        console.log('stockIns prop:', stockIns);
-        console.log('filters prop:', filters);
-        console.log('debug info:', debug);
-        console.log('stockIns.data length:', stockIns?.data?.length || 0);
-        console.log('stockIns.total:', stockIns?.total || 0);
-        
-        if (stockIns?.data?.length > 0) {
-            console.log('First stock in:', stockIns.data[0]);
-        } else if (stockIns?.total > 0) {
-            console.log('WARNING: Total > 0 but no data in current page!');
-        }
-        console.log('==========================');
-    }, [stockIns, filters, debug]);
 
     // Auto-search dengan debounce
     useEffect(() => {
@@ -162,7 +144,6 @@ export default function StockInIndex({
                 setStockInToDelete(null);
             },
             onError: (errors) => {
-                console.error('Delete errors:', errors);
                 toast({
                     title: "Gagal menghapus!",
                     description:
@@ -182,7 +163,8 @@ export default function StockInIndex({
                 ? dayjs(selectedDate).format("YYYY-MM-DD")
                 : undefined,
             search: searchQuery.trim() || undefined,
-            supplier_id: selectedSupplier === "all" ? undefined : selectedSupplier,
+            supplier_id:
+                selectedSupplier === "all" ? undefined : selectedSupplier,
             product_id: selectedProduct === "all" ? undefined : selectedProduct,
             per_page: perPage,
             sort_by: sortBy,
@@ -190,33 +172,27 @@ export default function StockInIndex({
         };
 
         // Filter out undefined values
-        Object.keys(filterData).forEach(key => {
+        Object.keys(filterData).forEach((key) => {
             if (filterData[key] === undefined) {
                 delete filterData[key];
             }
         });
 
-        console.log('Applying filter with data:', filterData);
         setIsLoading(true);
 
-        router.get(
-            route("stock-ins.index"),
-            filterData,
-            {
-                preserveState: true,
-                replace: true,
-                onFinish: () => setIsLoading(false),
-                onError: (errors) => {
-                    console.error('Filter error:', errors);
-                    setIsLoading(false);
-                    toast({
-                        title: "Error",
-                        description: "Gagal memuat data",
-                        variant: "destructive",
-                    });
-                }
-            }
-        );
+        router.get(route("stock-ins.index"), filterData, {
+            preserveState: true,
+            replace: true,
+            onFinish: () => setIsLoading(false),
+            onError: (errors) => {
+                setIsLoading(false);
+                toast({
+                    title: "Error",
+                    description: "Gagal memuat data",
+                    variant: "destructive",
+                });
+            },
+        });
     }, [
         selectedDate,
         searchQuery,
@@ -228,7 +204,6 @@ export default function StockInIndex({
     ]);
 
     const resetFilter = useCallback(() => {
-        console.log('Resetting all filters');
         setSelectedDate(null);
         setSearchQuery("");
         setSelectedSupplier("all");
@@ -237,25 +212,21 @@ export default function StockInIndex({
         setSortBy("id");
         setSortDirection("desc");
         setIsLoading(true);
-        
+
         router.get(
             route("stock-ins.index"),
             {},
-            { 
-                preserveState: true, 
+            {
+                preserveState: true,
                 replace: true,
                 onFinish: () => setIsLoading(false),
-                onError: (errors) => {
-                    console.error('Reset error:', errors);
-                    setIsLoading(false);
-                }
+                onError: () => setIsLoading(false),
             }
         );
     }, []);
 
     const handleSort = useCallback(
         (column) => {
-            console.log('Sorting by:', column);
             if (sortBy === column) {
                 setSortDirection(sortDirection === "asc" ? "desc" : "asc");
             } else {
@@ -268,20 +239,19 @@ export default function StockInIndex({
 
     // Apply filter ketika sortBy atau sortDirection berubah
     useEffect(() => {
-        if (sortBy !== filters.sort_by || sortDirection !== filters.sort_direction) {
+        if (
+            sortBy !== filters.sort_by ||
+            sortDirection !== filters.sort_direction
+        ) {
             applyFilter();
         }
     }, [sortBy, sortDirection]);
 
     const handleManualRefresh = () => {
-        console.log('Manual refresh triggered');
         setIsLoading(true);
         router.reload({
             onFinish: () => setIsLoading(false),
-            onError: (errors) => {
-                console.error('Refresh error:', errors);
-                setIsLoading(false);
-            }
+            onError: () => setIsLoading(false),
         });
     };
 
@@ -291,7 +261,8 @@ export default function StockInIndex({
                 ? dayjs(selectedDate).format("YYYY-MM-DD")
                 : undefined,
             search: searchQuery.trim() || undefined,
-            supplier_id: selectedSupplier === "all" ? undefined : selectedSupplier,
+            supplier_id:
+                selectedSupplier === "all" ? undefined : selectedSupplier,
             product_id: selectedProduct === "all" ? undefined : selectedProduct,
             per_page: perPage,
             sort_by: sortBy,
@@ -300,28 +271,20 @@ export default function StockInIndex({
         };
 
         // Filter out undefined values
-        Object.keys(filterData).forEach(key => {
+        Object.keys(filterData).forEach((key) => {
             if (filterData[key] === undefined) {
                 delete filterData[key];
             }
         });
 
-        console.log('Manual filter apply with data:', filterData);
         setIsLoading(true);
 
-        router.get(
-            route("stock-ins.index"),
-            filterData,
-            {
-                preserveState: true,
-                replace: true,
-                onFinish: () => setIsLoading(false),
-                onError: (errors) => {
-                    console.error('Filter apply error:', errors);
-                    setIsLoading(false);
-                }
-            }
-        );
+        router.get(route("stock-ins.index"), filterData, {
+            preserveState: true,
+            replace: true,
+            onFinish: () => setIsLoading(false),
+            onError: () => setIsLoading(false),
+        });
     };
 
     const getSortIcon = (column) => {
@@ -352,8 +315,7 @@ export default function StockInIndex({
                     });
                     setIsBulkDeleteOpen(false);
                 },
-                onError: (errors) => {
-                    console.error('Bulk delete errors:', errors);
+                onError: () => {
                     toast({
                         title: "Gagal menghapus!",
                         description:
@@ -373,12 +335,16 @@ export default function StockInIndex({
 
     // Cek apakah ada data
     const hasData = stockIns?.data && stockIns.data.length > 0;
-    const hasFilters = searchQuery || selectedDate || selectedSupplier !== 'all' || selectedProduct !== 'all';
+    const hasFilters =
+        searchQuery ||
+        selectedDate ||
+        selectedSupplier !== "all" ||
+        selectedProduct !== "all";
 
     // Checkbox handlers
     const handleSelectAll = (checked) => {
         if (checked && hasData) {
-            setSelectedIds(stockIns.data.map(item => item.id));
+            setSelectedIds(stockIns.data.map((item) => item.id));
         } else {
             setSelectedIds([]);
         }
@@ -386,9 +352,9 @@ export default function StockInIndex({
 
     const handleSelectItem = (itemId, checked) => {
         if (checked) {
-            setSelectedIds(prev => [...prev, itemId]);
+            setSelectedIds((prev) => [...prev, itemId]);
         } else {
-            setSelectedIds(prev => prev.filter(id => id !== itemId));
+            setSelectedIds((prev) => prev.filter((id) => id !== itemId));
         }
     };
 
@@ -410,13 +376,6 @@ export default function StockInIndex({
                                     <CardDescription className="text-md text-white mt-1">
                                         Kelola riwayat stok masuk produk.
                                     </CardDescription>
-                                    {debug && (
-                                        <div className="text-xs text-white/80 mt-2">
-                                            Debug: {debug.total_in_db} total | {debug.query_total} filtered | 
-                                            Page: {stockIns?.current_page} of {stockIns?.last_page}
-                                            {hasFilters && <span className="ml-2">(Filtered)</span>}
-                                        </div>
-                                    )}
                                 </div>
                             </div>
 
@@ -427,9 +386,13 @@ export default function StockInIndex({
                                     className="bg-white/10 border-white/20 text-white hover:bg-white/20"
                                     disabled={isLoading}
                                 >
-                                    <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                                    <RefreshCw
+                                        className={`h-4 w-4 ${
+                                            isLoading ? "animate-spin" : ""
+                                        }`}
+                                    />
                                 </Button>
-                                
+
                                 {(auth.user.roles.includes("admin") ||
                                     auth.user.roles.includes("staff")) && (
                                     <Link href={route("stock-ins.create")}>
@@ -457,7 +420,9 @@ export default function StockInIndex({
                                         type="text"
                                         placeholder="Produk, Supplier, Kode..."
                                         value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        onChange={(e) =>
+                                            setSearchQuery(e.target.value)
+                                        }
                                         className="pl-9 pr-3 py-2 rounded-md"
                                         disabled={isLoading}
                                     />
@@ -504,7 +469,10 @@ export default function StockInIndex({
                                                 </SelectItem>
                                             ))
                                         ) : (
-                                            <SelectItem value="no-supplier" disabled>
+                                            <SelectItem
+                                                value="no-supplier"
+                                                disabled
+                                            >
                                                 Tidak ada supplier
                                             </SelectItem>
                                         )}
@@ -539,7 +507,10 @@ export default function StockInIndex({
                                                 </SelectItem>
                                             ))
                                         ) : (
-                                            <SelectItem value="no-product" disabled>
+                                            <SelectItem
+                                                value="no-product"
+                                                disabled
+                                            >
                                                 Tidak ada produk
                                             </SelectItem>
                                         )}
@@ -575,14 +546,17 @@ export default function StockInIndex({
                                     {selectedIds.length > 0 && (
                                         <Button
                                             variant="destructive"
-                                            onClick={() => setIsBulkDeleteOpen(true)}
+                                            onClick={() =>
+                                                setIsBulkDeleteOpen(true)
+                                            }
                                             disabled={isLoading}
                                         >
-                                            Hapus Terpilih ({selectedIds.length})
+                                            Hapus Terpilih ({selectedIds.length}
+                                            )
                                         </Button>
                                     )}
                                 </div>
-                                
+
                                 <div className="flex gap-2">
                                     <Button
                                         onClick={resetFilter}
@@ -590,7 +564,7 @@ export default function StockInIndex({
                                         className="gap-1 shadow-sm rounded-md"
                                         disabled={isLoading}
                                     >
-                                        <RotateCcw className="h-4 w-4" /> 
+                                        <RotateCcw className="h-4 w-4" />
                                         Reset
                                     </Button>
                                     <Button
@@ -598,7 +572,9 @@ export default function StockInIndex({
                                         className="bg-green-800 hover:bg-green-900 text-white px-4 py-2 rounded-md shadow-sm"
                                         disabled={isLoading}
                                     >
-                                        {isLoading && <RefreshCw className="h-4 w-4 mr-2 animate-spin" />}
+                                        {isLoading && (
+                                            <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                                        )}
                                         Terapkan Filter
                                     </Button>
                                 </div>
@@ -607,23 +583,13 @@ export default function StockInIndex({
 
                         <Separator className="my-6" />
 
-                        {/* Debug info display */}
-                        {debug && (
-                            <div className="p-3 bg-yellow-50 border border-yellow-200 rounded text-sm">
-                                <strong>Debug Info:</strong> 
-                                Total DB: {debug.total_in_db} | 
-                                Filtered: {debug.query_total} | 
-                                Results: {stockIns?.data?.length || 0} |
-                                Page: {stockIns?.current_page} of {stockIns?.last_page} |
-                                Filters: {hasFilters ? 'Yes' : 'No'}
-                            </div>
-                        )}
-
                         {/* Loading State */}
                         {isLoading && (
                             <div className="flex justify-center items-center py-8">
                                 <RefreshCw className="h-8 w-8 animate-spin text-green-800" />
-                                <span className="ml-2 text-green-800">Memuat data...</span>
+                                <span className="ml-2 text-green-800">
+                                    Memuat data...
+                                </span>
                             </div>
                         )}
 
@@ -636,15 +602,23 @@ export default function StockInIndex({
                                             {/* CheckBox */}
                                             <TableHead>
                                                 <Checkbox
-                                                    checked={hasData && selectedIds.length === stockIns.data.length}
-                                                    onCheckedChange={handleSelectAll}
+                                                    checked={
+                                                        hasData &&
+                                                        selectedIds.length ===
+                                                            stockIns.data.length
+                                                    }
+                                                    onCheckedChange={
+                                                        handleSelectAll
+                                                    }
                                                 />
                                             </TableHead>
 
                                             {/* Sortable Columns */}
                                             <TableHead
                                                 className="px-6 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider cursor-pointer transition-colors duration-200 hover:bg-green-700"
-                                                onClick={() => handleSort("code")}
+                                                onClick={() =>
+                                                    handleSort("code")
+                                                }
                                             >
                                                 <div className="flex items-center">
                                                     Kode {getSortIcon("code")}
@@ -657,10 +631,13 @@ export default function StockInIndex({
 
                                             <TableHead
                                                 className="px-6 py-3 text-right text-xs font-semibold text-white uppercase tracking-wider cursor-pointer transition-colors duration-200 hover:bg-green-700"
-                                                onClick={() => handleSort("quantity")}
+                                                onClick={() =>
+                                                    handleSort("quantity")
+                                                }
                                             >
                                                 <div className="flex items-center justify-end">
-                                                    Qty {getSortIcon("quantity")}
+                                                    Qty{" "}
+                                                    {getSortIcon("quantity")}
                                                 </div>
                                             </TableHead>
 
@@ -670,10 +647,17 @@ export default function StockInIndex({
 
                                             <TableHead
                                                 className="px-6 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider cursor-pointer transition-colors duration-200 hover:bg-green-700"
-                                                onClick={() => handleSort("transaction_date")}
+                                                onClick={() =>
+                                                    handleSort(
+                                                        "transaction_date"
+                                                    )
+                                                }
                                             >
                                                 <div className="flex items-center">
-                                                    Tanggal {getSortIcon("transaction_date")}
+                                                    Tanggal{" "}
+                                                    {getSortIcon(
+                                                        "transaction_date"
+                                                    )}
                                                 </div>
                                             </TableHead>
 
@@ -699,59 +683,107 @@ export default function StockInIndex({
                                                 >
                                                     <TableCell>
                                                         <Checkbox
-                                                            checked={selectedIds.includes(stockIn.id)}
-                                                            onCheckedChange={(checked) => 
-                                                                handleSelectItem(stockIn.id, checked)
+                                                            checked={selectedIds.includes(
+                                                                stockIn.id
+                                                            )}
+                                                            onCheckedChange={(
+                                                                checked
+                                                            ) =>
+                                                                handleSelectItem(
+                                                                    stockIn.id,
+                                                                    checked
+                                                                )
                                                             }
                                                         />
                                                     </TableCell>
                                                     <TableCell className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                                        {safeDisplay(stockIn.code)}
+                                                        {safeDisplay(
+                                                            stockIn.code
+                                                        )}
                                                     </TableCell>
                                                     <TableCell className="px-6 py-4 whitespace-nowrap text-sm">
                                                         <div>
-                                                            <div className="font-medium">{safeDisplay(stockIn.product?.name)}</div>
-                                                            {stockIn.product?.sku && (
+                                                            <div className="font-medium">
+                                                                {safeDisplay(
+                                                                    stockIn
+                                                                        .product
+                                                                        ?.name
+                                                                )}
+                                                            </div>
+                                                            {stockIn.product
+                                                                ?.sku && (
                                                                 <div className="text-xs text-gray-500">
-                                                                    SKU: {stockIn.product.sku}
+                                                                    SKU:{" "}
+                                                                    {
+                                                                        stockIn
+                                                                            .product
+                                                                            .sku
+                                                                    }
                                                                 </div>
                                                             )}
                                                         </div>
                                                     </TableCell>
                                                     <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium">
-                                                        {stockIn.quantity ? 
-                                                            stockIn.quantity.toLocaleString("id-ID") : 0
-                                                        }
+                                                        {stockIn.quantity
+                                                            ? stockIn.quantity.toLocaleString(
+                                                                  "id-ID"
+                                                              )
+                                                            : 0}
                                                     </TableCell>
                                                     <TableCell className="px-6 py-4 whitespace-nowrap text-sm">
                                                         {safeDisplay(
                                                             stockIn.supplier ||
-                                                            stockIn.product?.supplier?.name
+                                                                stockIn.product
+                                                                    ?.supplier
+                                                                    ?.name
                                                         )}
                                                     </TableCell>
                                                     <TableCell className="px-6 py-4 whitespace-nowrap text-sm">
-                                                        {stockIn.transaction_date ? 
-                                                            dayjs(stockIn.transaction_date).format("DD MMM YYYY") :
-                                                            stockIn.date ? 
-                                                            dayjs(stockIn.date).format("DD MMM YYYY") : "-"
-                                                        }
+                                                        {stockIn.transaction_date
+                                                            ? dayjs(
+                                                                  stockIn.transaction_date
+                                                              ).format(
+                                                                  "DD MMM YYYY"
+                                                              )
+                                                            : stockIn.date
+                                                            ? dayjs(
+                                                                  stockIn.date
+                                                              ).format(
+                                                                  "DD MMM YYYY"
+                                                              )
+                                                            : "-"}
                                                     </TableCell>
                                                     <TableCell className="px-6 py-4 whitespace-nowrap text-sm">
-                                                        <span className={`px-2 py-1 rounded-full text-xs ${
-                                                            stockIn.source ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-500'
-                                                        }`}>
-                                                            {safeDisplay(stockIn.source, 'Manual')}
+                                                        <span
+                                                            className={`px-2 py-1 rounded-full text-xs ${
+                                                                stockIn.source
+                                                                    ? "bg-blue-100 text-blue-800"
+                                                                    : "bg-gray-100 text-gray-500"
+                                                            }`}
+                                                        >
+                                                            {safeDisplay(
+                                                                stockIn.source,
+                                                                "Manual"
+                                                            )}
                                                         </span>
                                                     </TableCell>
                                                     <TableCell className="px-6 py-4 whitespace-nowrap text-sm">
-                                                        {safeDisplay(stockIn.user?.name)}
+                                                        {safeDisplay(
+                                                            stockIn.user?.name
+                                                        )}
                                                     </TableCell>
                                                     <TableCell className="px-6 py-4 whitespace-nowrap text-sm font-medium text-center">
-                                                        {auth.user.roles.includes("admin") && (
+                                                        {auth.user.roles.includes(
+                                                            "admin"
+                                                        ) && (
                                                             <Button
                                                                 size="icon"
                                                                 variant="destructive"
-                                                                onClick={() => handleConfirmDelete(stockIn)}
+                                                                onClick={() =>
+                                                                    handleConfirmDelete(
+                                                                        stockIn
+                                                                    )
+                                                                }
                                                                 className="rounded-md"
                                                                 title="Hapus Stock In"
                                                             >
@@ -771,32 +803,45 @@ export default function StockInIndex({
                                                         <ArrowDownCircle className="h-16 w-16 text-gray-300" />
                                                         <div>
                                                             <h3 className="text-lg font-medium text-gray-900 mb-2">
-                                                                {stockIns?.total > 0 ? 
-                                                                    "Tidak ada data dengan filter ini" : 
-                                                                    "Belum ada Stock In"
-                                                                }
+                                                                {stockIns?.total >
+                                                                0
+                                                                    ? "Tidak ada data dengan filter ini"
+                                                                    : "Belum ada Stock In"}
                                                             </h3>
                                                             <p className="text-gray-500 mb-4">
-                                                                {stockIns?.total > 0 ? 
-                                                                    "Coba ubah filter atau reset untuk melihat semua data" :
-                                                                    "Mulai dengan menambahkan stock in baru"
-                                                                }
+                                                                {stockIns?.total >
+                                                                0
+                                                                    ? "Coba ubah filter atau reset untuk melihat semua data"
+                                                                    : "Mulai dengan menambahkan stock in baru"}
                                                             </p>
-                                                            {stockIns?.total > 0 ? (
-                                                                <Button 
-                                                                    onClick={resetFilter}
+                                                            {stockIns?.total >
+                                                            0 ? (
+                                                                <Button
+                                                                    onClick={
+                                                                        resetFilter
+                                                                    }
                                                                     variant="outline"
                                                                 >
                                                                     <RotateCcw className="h-4 w-4 mr-2" />
                                                                     Reset Filter
                                                                 </Button>
                                                             ) : (
-                                                                (auth.user.roles.includes("admin") || 
-                                                                 auth.user.roles.includes("staff")) && (
-                                                                    <Link href={route("stock-ins.create")}>
+                                                                (auth.user.roles.includes(
+                                                                    "admin"
+                                                                ) ||
+                                                                    auth.user.roles.includes(
+                                                                        "staff"
+                                                                    )) && (
+                                                                    <Link
+                                                                        href={route(
+                                                                            "stock-ins.create"
+                                                                        )}
+                                                                    >
                                                                         <Button className="bg-green-800 hover:bg-green-900">
                                                                             <PlusCircle className="h-4 w-4 mr-2" />
-                                                                            Tambah Stock In
+                                                                            Tambah
+                                                                            Stock
+                                                                            In
                                                                         </Button>
                                                                     </Link>
                                                                 )
@@ -815,136 +860,218 @@ export default function StockInIndex({
                         {!isLoading && stockIns?.total > 0 && (
                             <div className="flex justify-between items-center text-sm text-gray-600">
                                 <p>
-                                    Menampilkan {stockIns.from} - {stockIns.to} dari{" "}
-                                    {stockIns.total} data
+                                    Menampilkan {stockIns.from} - {stockIns.to}{" "}
+                                    dari {stockIns.total} data
                                     {hasFilters && " (terfilter)"}
                                 </p>
                                 <p>
-                                    Halaman {stockIns.current_page} dari {stockIns.last_page}
+                                    Halaman {stockIns.current_page} dari{" "}
+                                    {stockIns.last_page}
                                 </p>
                             </div>
                         )}
 
                         {/* Pagination Section */}
-                        {!isLoading && stockIns?.links && stockIns.links.length > 3 && (
-                            <div className="flex justify-center mt-6">
-                                <Pagination>
-                                    <PaginationContent>
-                                        {stockIns.links.map((link, index) => {
-                                            const isPreviousLabel =
-                                                link.label.includes("Previous") ||
-                                                link.label.includes("pagination.previous");
-                                            const isNextLabel =
-                                                link.label.includes("Next") ||
-                                                link.label.includes("pagination.next");
-                                            const isEllipsis = link.label.includes("...");
+                        {!isLoading &&
+                            stockIns?.links &&
+                            stockIns.links.length > 3 && (
+                                <div className="flex justify-center mt-6">
+                                    <Pagination>
+                                        <PaginationContent>
+                                            {stockIns.links.map(
+                                                (link, index) => {
+                                                    const isPreviousLabel =
+                                                        link.label.includes(
+                                                            "Previous"
+                                                        ) ||
+                                                        link.label.includes(
+                                                            "pagination.previous"
+                                                        );
+                                                    const isNextLabel =
+                                                        link.label.includes(
+                                                            "Next"
+                                                        ) ||
+                                                        link.label.includes(
+                                                            "pagination.next"
+                                                        );
+                                                    const isEllipsis =
+                                                        link.label.includes(
+                                                            "..."
+                                                        );
 
-                                            if (isPreviousLabel) {
-                                                return (
-                                                    <PaginationItem key={index}>
-                                                        <PaginationPrevious
-                                                            href={link.url || "#"}
-                                                            className={
-                                                                !link.url
-                                                                    ? "opacity-50 cursor-not-allowed"
-                                                                    : "text-green-800 hover:bg-green-50"
-                                                            }
-                                                            onClick={(e) => {
-                                                                e.preventDefault();
-                                                                if (link.url && !isLoading) {
-                                                                    setIsLoading(true);
-                                                                    router.get(link.url, {}, {
-                                                                        preserveState: true,
-                                                                        replace: true,
-                                                                        onFinish: () => setIsLoading(false),
-                                                                    });
-                                                                }
-                                                            }}
-                                                        />
-                                                    </PaginationItem>
-                                                );
-                                            }
+                                                    if (isPreviousLabel) {
+                                                        return (
+                                                            <PaginationItem
+                                                                key={index}
+                                                            >
+                                                                <PaginationPrevious
+                                                                    href={
+                                                                        link.url ||
+                                                                        "#"
+                                                                    }
+                                                                    className={
+                                                                        !link.url
+                                                                            ? "opacity-50 cursor-not-allowed"
+                                                                            : "text-green-800 hover:bg-green-50"
+                                                                    }
+                                                                    onClick={(
+                                                                        e
+                                                                    ) => {
+                                                                        e.preventDefault();
+                                                                        if (
+                                                                            link.url &&
+                                                                            !isLoading
+                                                                        ) {
+                                                                            setIsLoading(
+                                                                                true
+                                                                            );
+                                                                            router.get(
+                                                                                link.url,
+                                                                                {},
+                                                                                {
+                                                                                    preserveState: true,
+                                                                                    replace: true,
+                                                                                    onFinish:
+                                                                                        () =>
+                                                                                            setIsLoading(
+                                                                                                false
+                                                                                            ),
+                                                                                }
+                                                                            );
+                                                                        }
+                                                                    }}
+                                                                />
+                                                            </PaginationItem>
+                                                        );
+                                                    }
 
-                                            if (isNextLabel) {
-                                                return (
-                                                    <PaginationItem key={index}>
-                                                        <PaginationNext
-                                                            href={link.url || "#"}
-                                                            className={
-                                                                !link.url
-                                                                    ? "opacity-50 cursor-not-allowed"
-                                                                    : "text-green-800 hover:bg-green-50"
-                                                            }
-                                                            onClick={(e) => {
-                                                                e.preventDefault();
-                                                                if (link.url && !isLoading) {
-                                                                    setIsLoading(true);
-                                                                    router.get(link.url, {}, {
-                                                                        preserveState: true,
-                                                                        replace: true,
-                                                                        onFinish: () => setIsLoading(false),
-                                                                    });
-                                                                }
-                                                            }}
-                                                        />
-                                                    </PaginationItem>
-                                                );
-                                            }
+                                                    if (isNextLabel) {
+                                                        return (
+                                                            <PaginationItem
+                                                                key={index}
+                                                            >
+                                                                <PaginationNext
+                                                                    href={
+                                                                        link.url ||
+                                                                        "#"
+                                                                    }
+                                                                    className={
+                                                                        !link.url
+                                                                            ? "opacity-50 cursor-not-allowed"
+                                                                            : "text-green-800 hover:bg-green-50"
+                                                                    }
+                                                                    onClick={(
+                                                                        e
+                                                                    ) => {
+                                                                        e.preventDefault();
+                                                                        if (
+                                                                            link.url &&
+                                                                            !isLoading
+                                                                        ) {
+                                                                            setIsLoading(
+                                                                                true
+                                                                            );
+                                                                            router.get(
+                                                                                link.url,
+                                                                                {},
+                                                                                {
+                                                                                    preserveState: true,
+                                                                                    replace: true,
+                                                                                    onFinish:
+                                                                                        () =>
+                                                                                            setIsLoading(
+                                                                                                false
+                                                                                            ),
+                                                                                }
+                                                                            );
+                                                                        }
+                                                                    }}
+                                                                />
+                                                            </PaginationItem>
+                                                        );
+                                                    }
 
-                                            if (!isEllipsis) {
-                                                return (
-                                                    <PaginationItem key={index}>
-                                                        <PaginationLink
-                                                            href={link.url || "#"}
-                                                            isActive={link.active}
-                                                            className={
-                                                                !link.url
-                                                                    ? "opacity-50 cursor-not-allowed"
-                                                                    : link.active
-                                                                    ? "bg-green-800 text-white hover:bg-green-900"
-                                                                    : "text-green-800 hover:bg-green-50"
-                                                            }
-                                                            onClick={(e) => {
-                                                                e.preventDefault();
-                                                                if (link.url && !isLoading) {
-                                                                    setIsLoading(true);
-                                                                    router.get(link.url, {}, {
-                                                                        preserveState: true,
-                                                                        replace: true,
-                                                                        onFinish: () => setIsLoading(false),
-                                                                    });
-                                                                }
-                                                            }}
+                                                    if (!isEllipsis) {
+                                                        return (
+                                                            <PaginationItem
+                                                                key={index}
+                                                            >
+                                                                <PaginationLink
+                                                                    href={
+                                                                        link.url ||
+                                                                        "#"
+                                                                    }
+                                                                    isActive={
+                                                                        link.active
+                                                                    }
+                                                                    className={
+                                                                        !link.url
+                                                                            ? "opacity-50 cursor-not-allowed"
+                                                                            : link.active
+                                                                            ? "bg-green-800 text-white hover:bg-green-900"
+                                                                            : "text-green-800 hover:bg-green-50"
+                                                                    }
+                                                                    onClick={(
+                                                                        e
+                                                                    ) => {
+                                                                        e.preventDefault();
+                                                                        if (
+                                                                            link.url &&
+                                                                            !isLoading
+                                                                        ) {
+                                                                            setIsLoading(
+                                                                                true
+                                                                            );
+                                                                            router.get(
+                                                                                link.url,
+                                                                                {},
+                                                                                {
+                                                                                    preserveState: true,
+                                                                                    replace: true,
+                                                                                    onFinish:
+                                                                                        () =>
+                                                                                            setIsLoading(
+                                                                                                false
+                                                                                            ),
+                                                                                }
+                                                                            );
+                                                                        }
+                                                                    }}
+                                                                >
+                                                                    {link.label}
+                                                                </PaginationLink>
+                                                            </PaginationItem>
+                                                        );
+                                                    }
+
+                                                    return (
+                                                        <PaginationItem
+                                                            key={index}
                                                         >
-                                                            {link.label}
-                                                        </PaginationLink>
-                                                    </PaginationItem>
-                                                );
-                                            }
-
-                                            return (
-                                                <PaginationItem key={index}>
-                                                    <PaginationEllipsis className="text-gray-500" />
-                                                </PaginationItem>
-                                            );
-                                        })}
-                                    </PaginationContent>
-                                </Pagination>
-                            </div>
-                        )}
+                                                            <PaginationEllipsis className="text-gray-500" />
+                                                        </PaginationItem>
+                                                    );
+                                                }
+                                            )}
+                                        </PaginationContent>
+                                    </Pagination>
+                                </div>
+                            )}
                     </CardContent>
                 </Card>
             </div>
 
             {/* Delete Confirmation Dialog */}
-            <Dialog open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen}>
+            <Dialog
+                open={isDeleteModalOpen}
+                onOpenChange={setIsDeleteModalOpen}
+            >
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>Konfirmasi Hapus</DialogTitle>
                         <DialogDescription>
-                            Apakah Anda yakin ingin menghapus Stock In dengan kode{" "}
-                            <b>{stockInToDelete?.code}</b>?{" "}
-                            <br />
+                            Apakah Anda yakin ingin menghapus Stock In dengan
+                            kode <b>{stockInToDelete?.code}</b>? <br />
                             Tindakan ini tidak dapat dibatalkan dan akan
                             mengurangi stok produk.
                         </DialogDescription>

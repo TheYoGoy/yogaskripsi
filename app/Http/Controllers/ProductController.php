@@ -63,7 +63,7 @@ class ProductController extends Controller
                 ->select([
                     'products.id',
                     'products.code',
-                    'products.sku', 
+                    'products.sku',
                     'products.name',
                     'products.description',
                     'products.category_id',
@@ -82,9 +82,9 @@ class ProductController extends Controller
                 $search = $filters['search'];
                 $query->where(function ($q) use ($search) {
                     $q->where('products.name', 'like', "%$search%")
-                      ->orWhere('products.sku', 'like', "%$search%")
-                      ->orWhere('products.code', 'like', "%$search%")
-                      ->orWhere('products.description', 'like', "%$search%");
+                        ->orWhere('products.sku', 'like', "%$search%")
+                        ->orWhere('products.code', 'like', "%$search%")
+                        ->orWhere('products.description', 'like', "%$search%");
                 });
             }
 
@@ -151,7 +151,6 @@ class ProductController extends Controller
                     'error' => session('error'),
                 ],
             ]);
-
         } catch (\Exception $e) {
             Log::error('Error in product index', [
                 'error' => $e->getMessage(),
@@ -228,7 +227,6 @@ class ProductController extends Controller
             return redirect()
                 ->route('products.index')
                 ->with('success', "Produk '{$product->name}' berhasil ditambahkan.");
-
         } catch (\Exception $e) {
             Log::error('Error creating product', [
                 'user_id' => Auth::id(),
@@ -248,11 +246,11 @@ class ProductController extends Controller
     public function show(Product $product)
     {
         $product->load(['category', 'unit', 'supplier']);
-        
+
         // Calculate dan assign sebagai properti terpisah
         $product->rop = $product->calculateRop();
         $product->eoq = $product->calculateEoq();
-        
+
         // Ambil reorder status dan extract message untuk frontend
         $reorderStatus = $product->getReorderStatus();
         $product->reorder_status_message = $reorderStatus['message'];
@@ -278,7 +276,7 @@ class ProductController extends Controller
     public function edit(Product $product)
     {
         $product->load(['category', 'unit', 'supplier']);
-        
+
         $categories = Category::select('id', 'name')->orderBy('name')->get();
         $units = Unit::select('id', 'name', 'symbol')->orderBy('name')->get();
         $suppliers = Supplier::select('id', 'name')->orderBy('name')->get();
@@ -327,7 +325,6 @@ class ProductController extends Controller
             return redirect()
                 ->route('products.index')
                 ->with('success', "Produk '{$product->name}' berhasil diperbarui.");
-
         } catch (\Exception $e) {
             Log::error('Error updating product', [
                 'product_id' => $product->id,
@@ -358,7 +355,6 @@ class ProductController extends Controller
             return redirect()
                 ->route('products.index')
                 ->with('success', "Produk '{$productName}' berhasil dihapus.");
-
         } catch (\Exception $e) {
             Log::error('Error deleting product', [
                 'product_id' => $product->id,
@@ -391,7 +387,6 @@ class ProductController extends Controller
             ]);
 
             return back()->with('success', "{$count} produk berhasil dihapus.");
-
         } catch (\Exception $e) {
             Log::error('Error bulk deleting products', [
                 'ids' => $request->ids,
@@ -439,7 +434,6 @@ class ProductController extends Controller
                 'code' => $code,
                 'generatedCode' => $code,
             ]);
-
         } catch (\Exception $e) {
             Log::error('Error generating product code', [
                 'error' => $e->getMessage(),
@@ -462,7 +456,7 @@ class ProductController extends Controller
         try {
             // Handle both URL parameter and query parameter
             $code = $code ?? $request->input('code') ?? $request->route('code');
-            
+
             if (empty($code)) {
                 return response()->json([
                     'success' => false,
@@ -479,7 +473,7 @@ class ProductController extends Controller
             $product = Product::with(['supplier:id,name,phone,address'])
                 ->where(function ($query) use ($code) {
                     $query->where('code', $code)
-                          ->orWhere('sku', $code);
+                        ->orWhere('sku', $code);
                 })
                 ->first();
 
@@ -520,7 +514,6 @@ class ProductController extends Controller
             ]);
 
             return response()->json($responseData);
-
         } catch (\Exception $e) {
             Log::error('Error searching product by code', [
                 'code' => $request->input('code'),
@@ -563,7 +556,6 @@ class ProductController extends Controller
                 'code' => $codeToEncode,
                 'product_name' => $product->name
             ]);
-
         } catch (\Exception $e) {
             Log::error('Error generating barcode', [
                 'product_id' => $product->id,
@@ -607,7 +599,6 @@ class ProductController extends Controller
             return response($svg)
                 ->header('Content-Type', 'image/svg+xml')
                 ->header('Content-Disposition', 'attachment; filename="' . $filename . '"');
-
         } catch (\Exception $e) {
             Log::error('Error downloading barcode', [
                 'product_id' => $product->id,
@@ -648,7 +639,6 @@ class ProductController extends Controller
                 'product_name' => $product->name,
                 'type' => 'qr_code'
             ]);
-
         } catch (\Exception $e) {
             Log::error('Error generating QR code', [
                 'product_id' => $product->id,
@@ -686,7 +676,6 @@ class ProductController extends Controller
             return response($svg)
                 ->header('Content-Type', 'image/svg+xml')
                 ->header('Content-Disposition', 'attachment; filename="' . $filename . '"');
-
         } catch (\Exception $e) {
             Log::error('Error downloading QR code', [
                 'product_id' => $product->id,

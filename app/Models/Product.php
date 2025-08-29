@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
 
 class Product extends Model
 {
@@ -189,6 +190,147 @@ class Product extends Model
                 'color' => 'green',
                 'urgent' => false
             ];
+        }
+    }
+
+    public function isLowStock(): bool
+    {
+        if (!$this->hasRequiredStockData()) {
+            return false;
+        }
+
+        $rop = $this->calculateRop();
+        return $this->current_stock <= $rop;
+    }
+
+    public function getStockStatus(): array
+    {
+        if (!$this->hasRequiredStockData()) {
+            return [
+                'status' => 'unknown',
+                'color' => 'gray',
+                'message' => 'Data Tidak Lengkap',
+                'level' => 0
+            ];
+        }
+
+        if (!$this->isLowStock()) {
+            return [
+                'status' => 'normal',
+                'color' => 'green',
+                'message' => 'Stok Normal',
+                'level' => 5
+            ];
+        }
+
+        $rop = $this->calculateRop();
+        $ratio = $this->current_stock / max($rop, 1);
+
+        if ($ratio <= 0) {
+            return [
+                'status' => 'out_of_stock',
+                'color' => 'gray',
+                'message' => 'Habis',
+                'level' => 0
+            ];
+        } elseif ($ratio <= 0.25) {
+            return [
+                'status' => 'critical',
+                'color' => 'red',
+                'message' => 'Kritis',
+                'level' => 1
+            ];
+        } elseif ($ratio <= 0.5) {
+            return [
+                'status' => 'high',
+                'color' => 'orange',
+                'message' => 'Sangat Rendah',
+                'level' => 2
+            ];
+        } elseif ($ratio <= 0.75) {
+            return [
+                'status' => 'medium',
+                'color' => 'yellow',
+                'message' => 'Rendah',
+                'level' => 3
+            ];
+        } else {
+            return [
+                'status' => 'low',
+                'color' => 'blue',
+                'message' => 'Menipis',
+                'level' => 4
+            ];
+        }
+    }
+
+    public function getStockPercentage(): float
+    {
+        if (!$this->hasRequiredStockData()) {
+            return 0;
+        }
+
+        $rop = $this->calculateRop();
+        return round(($this->current_stock / max($rop, 1)) * 100, 1);
+    }
+
+    public function getDaysUntilStockout(): int
+    {
+        if (!$this->hasRequiredStockData() || $this->daily_usage_rate <= 0) {
+            return 0;
+        }
+
+        return (int) ceil($this->current_stock / $this->daily_usage_rate);
+    }
+
+    private function hasRequiredStockData(): bool
+    {
+        return !is_null($this->current_stock) &&
+            !is_null($this->daily_usage_rate) &&
+            !is_null($this->lead_time) &&
+            $this->daily_usage_rate > 0;
+    }
+
+    public function checkAndSendLowStockNotification()
+    {
+        if (!$this->current_stock || !$this->daily_usage_rate || !$this->lead_time) {
+            return false;
+        }
+
+        $rop = $this->calculateRop();
+
+        if ($this->current_stock <= $rop) {
+            // Cek apakah sudah ada notifikasi dalam 4 jam terakhir
+            $recentNotification = DB::table('notifications')
+                ->where('type', \App\Notifications\LowStockNotification::class)
+                ->where('data->product_id', $this->id)
+                ->where('created_at', '>=', now()->subHours(4))
+                ->exists();
+
+            if (!$recentNotification) {
+                $this->sendLowStockNotification($rop);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function sendLowStockNotification($rop)
+    {
+        // Kirim notifikasi ke user yang punya role admin, manager, atau inventory_manager
+        $users = \App\Models\User::role(['admin', 'manager'])
+            ->get();
+
+        // Jika tidak ada user dengan role tersebut, ambil semua admin
+        if ($users->isEmpty()) {
+            $users = \App\Models\User::whereHas('roles', function ($query) {
+                $query->where('name', 'admin');
+            })->get();
+        }
+
+        foreach ($users as $user) {
+            $user->notify(new \App\Notifications\LowStockNotification($this, $rop));
         }
     }
 }

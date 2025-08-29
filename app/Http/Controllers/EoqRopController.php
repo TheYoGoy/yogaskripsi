@@ -76,15 +76,15 @@ class EoqRopController extends Controller
     {
         try {
             $filters = $request->only(['search', 'created_at']);
-            
+
             $fileName = 'eoq-rop-report-' . date('Y-m-d-H-i-s') . '.xlsx';
-            
+
             return Excel::download(new EoqRopExport($filters), $fileName);
         } catch (\Exception $e) {
             Log::error('Error exporting EOQ ROP to Excel', [
                 'error' => $e->getMessage()
             ]);
-            
+
             return back()->with('error', 'Gagal mengexport data ke Excel.');
         }
     }
@@ -96,7 +96,7 @@ class EoqRopController extends Controller
     {
         try {
             $filters = $request->only(['search', 'created_at']);
-            
+
             // Get filtered products data
             $products = Product::query()
                 ->when($filters['search'] ?? null, function ($query, $search) {
@@ -126,15 +126,15 @@ class EoqRopController extends Controller
 
             $pdf = Pdf::loadView('exports.eoq-rop-pdf', $data);
             $pdf->setPaper('A4', 'landscape');
-            
+
             $fileName = 'eoq-rop-report-' . date('Y-m-d-H-i-s') . '.pdf';
-            
-            return $pdf->download($fileName);
+
+            return $pdf->stream($fileName);
         } catch (\Exception $e) {
             Log::error('Error exporting EOQ ROP to PDF', [
                 'error' => $e->getMessage()
             ]);
-            
+
             return back()->with('error', 'Gagal mengexport data ke PDF.');
         }
     }
@@ -197,15 +197,17 @@ class EoqRopController extends Controller
             }
 
             // Calculate EOQ = √((2 × Annual Demand × Ordering Cost) / (Unit Cost × Holding Cost Percentage))
-            if ($product->daily_usage_rate && 
-                $product->ordering_cost && 
-                $product->holding_cost_percentage && 
-                $product->price) {
-                
+            if (
+                $product->daily_usage_rate &&
+                $product->ordering_cost &&
+                $product->holding_cost_percentage &&
+                $product->price
+            ) {
+
                 $annualDemand = $product->daily_usage_rate * 365;
                 $unitCost = $product->price;
                 $holdingCostPerUnit = $unitCost * $product->holding_cost_percentage;
-                
+
                 if ($holdingCostPerUnit > 0) {
                     $eoq = sqrt((2 * $annualDemand * $product->ordering_cost) / $holdingCostPerUnit);
                 }

@@ -12,16 +12,30 @@ import { Button } from "@/Components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/Components/ui/card";
 import { Input } from "@/Components/ui/input";
 import { Label } from "@/Components/ui/label";
-import { Download, FileText, AlertCircle, Building, Users } from "lucide-react";
+import {
+    Download,
+    FileText,
+    AlertCircle,
+    Building,
+    Users,
+    DollarSign,
+    TrendingUp,
+} from "lucide-react";
 import { useState } from "react";
 
-export default function SupplierReport({ auth, suppliers, filters = {} }) {
+export default function SupplierReport({
+    auth,
+    suppliers,
+    filters = {},
+    summary = {},
+}) {
     const [isExporting, setIsExporting] = useState(false);
 
     const { data, setData, get, processing } = useForm({
         search: filters.search || "",
         start_date: filters.start_date || "",
         end_date: filters.end_date || "",
+        per_page: filters.per_page || 15,
     });
 
     const handleFilter = (e) => {
@@ -48,9 +62,10 @@ export default function SupplierReport({ auth, suppliers, filters = {} }) {
             search: "",
             start_date: "",
             end_date: "",
+            per_page: 15,
         });
         get(route("reports.suppliers"), {
-            data: { search: "", start_date: "", end_date: "" },
+            data: { search: "", start_date: "", end_date: "", per_page: 15 },
             preserveState: true,
             preserveScroll: true,
         });
@@ -69,13 +84,25 @@ export default function SupplierReport({ auth, suppliers, filters = {} }) {
         }).format(amount || 0);
     };
 
-    const getTotalSuppliers = () => suppliers.data.length;
+    const formatNumber = (num) => {
+        return new Intl.NumberFormat("id-ID").format(num || 0);
+    };
+
+    // Use summary data from controller or calculate from suppliers
+    const getTotalSuppliers = () =>
+        summary.total_suppliers || suppliers.data.length;
+    const getActiveSuppliers = () =>
+        summary.active_suppliers ||
+        suppliers.data.filter(
+            (supplier) => (supplier.total_transactions || 0) > 0
+        ).length;
     const getTotalTransactions = () =>
         suppliers.data.reduce(
             (total, supplier) => total + (supplier.total_transactions || 0),
             0
         );
     const getTotalPurchases = () =>
+        summary.total_amount ||
         suppliers.data.reduce(
             (total, supplier) => total + parseFloat(supplier.total_amount || 0),
             0
@@ -104,7 +131,7 @@ export default function SupplierReport({ auth, suppliers, filters = {} }) {
                         <CardContent>
                             <form
                                 onSubmit={handleFilter}
-                                className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end"
+                                className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end"
                             >
                                 <div className="space-y-2">
                                     <Label className="text-gray-600 font-medium">
@@ -149,6 +176,25 @@ export default function SupplierReport({ auth, suppliers, filters = {} }) {
                                         className="focus:ring-indigo-500 focus:border-indigo-500"
                                     />
                                 </div>
+
+                                <div className="space-y-2">
+                                    <Label className="text-gray-600 font-medium">
+                                        Items per Page
+                                    </Label>
+                                    <select
+                                        value={data.per_page}
+                                        onChange={(e) =>
+                                            setData("per_page", e.target.value)
+                                        }
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+                                    >
+                                        <option value="10">10</option>
+                                        <option value="15">15</option>
+                                        <option value="25">25</option>
+                                        <option value="50">50</option>
+                                    </select>
+                                </div>
+
                                 <div className="flex gap-2 pt-2">
                                     <Button
                                         type="submit"
@@ -173,8 +219,9 @@ export default function SupplierReport({ auth, suppliers, filters = {} }) {
                     </Card>
 
                     {/* Kartu Ringkasan */}
-                    {suppliers.data.length > 0 && (
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                    {(suppliers.data.length > 0 ||
+                        Object.keys(summary).length > 0) && (
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
                             <Card className="bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200">
                                 <CardContent className="p-6">
                                     <div className="flex items-center justify-between">
@@ -191,12 +238,33 @@ export default function SupplierReport({ auth, suppliers, filters = {} }) {
                                 </CardContent>
                             </Card>
 
+                            <Card className="bg-gradient-to-r from-green-50 to-green-100 border border-green-200">
+                                <CardContent className="p-6">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <div className="text-2xl font-bold text-green-600">
+                                                {getActiveSuppliers()}
+                                            </div>
+                                            <div className="text-sm text-gray-600">
+                                                Supplier Aktif
+                                            </div>
+                                            <div className="text-xs text-green-600">
+                                                Dengan transaksi
+                                            </div>
+                                        </div>
+                                        <TrendingUp className="h-12 w-12 text-green-500 opacity-80" />
+                                    </div>
+                                </CardContent>
+                            </Card>
+
                             <Card className="bg-gradient-to-r from-purple-50 to-purple-100 border border-purple-200">
                                 <CardContent className="p-6">
                                     <div className="flex items-center justify-between">
                                         <div>
                                             <div className="text-2xl font-bold text-purple-600">
-                                                {getTotalTransactions()}
+                                                {formatNumber(
+                                                    getTotalTransactions()
+                                                )}
                                             </div>
                                             <div className="text-sm text-gray-600">
                                                 Total Transaksi
@@ -207,11 +275,11 @@ export default function SupplierReport({ auth, suppliers, filters = {} }) {
                                 </CardContent>
                             </Card>
 
-                            <Card className="bg-gradient-to-r from-green-50 to-green-100 border border-green-200">
+                            <Card className="bg-gradient-to-r from-orange-50 to-orange-100 border border-orange-200">
                                 <CardContent className="p-6">
                                     <div className="flex items-center justify-between">
                                         <div>
-                                            <div className="text-2xl font-bold text-green-600">
+                                            <div className="text-2xl font-bold text-orange-600">
                                                 {formatCurrency(
                                                     getTotalPurchases()
                                                 )}
@@ -220,7 +288,7 @@ export default function SupplierReport({ auth, suppliers, filters = {} }) {
                                                 Total Pembelian
                                             </div>
                                         </div>
-                                        <FileText className="h-12 w-12 text-green-500 opacity-80" />
+                                        <DollarSign className="h-12 w-12 text-orange-500 opacity-80" />
                                     </div>
                                 </CardContent>
                             </Card>
@@ -249,19 +317,22 @@ export default function SupplierReport({ auth, suppliers, filters = {} }) {
                                                 Nama
                                             </TableHead>
                                             <TableHead className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                Telepon
-                                            </TableHead>
-                                            <TableHead className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                Perusahaan
+                                                Kontak
                                             </TableHead>
                                             <TableHead className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                                 Alamat
                                             </TableHead>
                                             <TableHead className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                Jumlah Produk
+                                            </TableHead>
+                                            <TableHead className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                                                 Total Transaksi
                                             </TableHead>
                                             <TableHead className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                Total Pembelian (Rp)
+                                                Total Pembelian
+                                            </TableHead>
+                                            <TableHead className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                Status
                                             </TableHead>
                                         </TableRow>
                                     </TableHeader>
@@ -276,38 +347,77 @@ export default function SupplierReport({ auth, suppliers, filters = {} }) {
                                                         {supplier.name}
                                                     </TableCell>
                                                     <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                                                        {supplier.phone || "-"}
+                                                        <div className="space-y-1">
+                                                            {supplier.phone && (
+                                                                <div className="flex items-center text-sm">
+                                                                    📞{" "}
+                                                                    {
+                                                                        supplier.phone
+                                                                    }
+                                                                </div>
+                                                            )}
+                                                            {supplier.email && (
+                                                                <div className="flex items-center text-xs text-gray-600">
+                                                                    ✉️{" "}
+                                                                    {
+                                                                        supplier.email
+                                                                    }
+                                                                </div>
+                                                            )}
+                                                        </div>
                                                     </TableCell>
-                                                    <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                                                        {supplier.company ||
-                                                            "-"}
-                                                    </TableCell>
-                                                    <TableCell className="px-6 py-4 text-sm text-gray-700 max-w-xs truncate">
-                                                        {supplier.address ||
-                                                            "-"}
+                                                    <TableCell className="px-6 py-4 text-sm text-gray-700 max-w-xs">
+                                                        <div className="truncate">
+                                                            {supplier.address ||
+                                                                "-"}
+                                                        </div>
                                                     </TableCell>
                                                     <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium text-blue-600">
-                                                        {supplier.total_transactions ||
-                                                            0}
+                                                        {formatNumber(
+                                                            supplier.products_count ||
+                                                                0
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium text-purple-600">
+                                                        {formatNumber(
+                                                            supplier.total_transactions ||
+                                                                0
+                                                        )}
                                                     </TableCell>
                                                     <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium text-green-600">
                                                         {formatCurrency(
                                                             supplier.total_amount
                                                         )}
                                                     </TableCell>
+                                                    <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-center">
+                                                        <span
+                                                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                                                (supplier.total_transactions ||
+                                                                    0) > 0
+                                                                    ? "bg-green-100 text-green-800"
+                                                                    : "bg-gray-100 text-gray-800"
+                                                            }`}
+                                                        >
+                                                            {(supplier.total_transactions ||
+                                                                0) > 0
+                                                                ? "Aktif"
+                                                                : "Tidak Aktif"}
+                                                        </span>
+                                                    </TableCell>
                                                 </TableRow>
                                             ))
                                         ) : (
                                             <TableRow>
                                                 <TableCell
-                                                    colSpan={6}
+                                                    colSpan={7}
                                                     className="px-6 py-8 text-center text-sm text-gray-500"
                                                 >
                                                     <div className="flex flex-col items-center gap-2">
                                                         <AlertCircle className="h-8 w-8 text-gray-400" />
                                                         <span>
-                                                            Tidak ada data supplier
-                                                            yang sesuai dengan filter.
+                                                            Tidak ada data
+                                                            supplier yang sesuai
+                                                            dengan filter.
                                                         </span>
                                                         <Button
                                                             variant="outline"

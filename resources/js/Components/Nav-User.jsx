@@ -109,22 +109,6 @@ export function NavUser({ isNavbar, btnClassName }) {
 
                         <DropdownMenuSeparator />
 
-                        <DropdownMenuGroup>
-                            <DropdownMenuItem asChild>
-                                <Link
-                                    href={route("settings.index")}
-                                    className="flex items-center"
-                                >
-                                    <Settings className="mr-2" />
-                                    Setting
-                                </Link>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem>
-                                <Bell className="mr-2" />
-                                Notifications
-                            </DropdownMenuItem>
-                        </DropdownMenuGroup>
-
                         <DropdownMenuSeparator />
 
                         <DropdownMenuItem

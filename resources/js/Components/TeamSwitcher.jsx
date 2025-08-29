@@ -80,11 +80,6 @@ export function TeamSwitcher({ settings }) {
                             </div>
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem className="gap-2 p-2" disabled>
-                            <div className="font-medium text-muted-foreground">
-                                Ganti Perusahaan (coming soon)
-                            </div>
-                        </DropdownMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>
             </SidebarMenuItem>

@@ -20,22 +20,30 @@ import {
     SelectValue,
 } from "@/Components/ui/select";
 import { useState } from "react";
-import { 
-    AlertTriangle, 
-    Download, 
-    FileText, 
-    Package, 
+import {
+    AlertTriangle,
+    Download,
+    FileText,
+    Package,
     Filter,
-    AlertCircle
+    AlertCircle,
+    DollarSign,
 } from "lucide-react";
 
-export default function StockReport({ auth, products, categories, filters }) {
+export default function StockReport({
+    auth,
+    products,
+    categories,
+    filters = {},
+    summary = {},
+}) {
     const [isExporting, setIsExporting] = useState(false);
 
     const { data, setData, get, processing } = useForm({
         category_id: filters.category_id || "all",
         min_stock: filters.min_stock || "",
         max_stock: filters.max_stock || "",
+        per_page: filters.per_page || 15,
     });
 
     const handleFilter = (e) => {
@@ -57,15 +65,21 @@ export default function StockReport({ auth, products, categories, filters }) {
         });
     };
 
-    const handleResetFilters = () => {
+    const handleReset = () => {
         setData({
             category_id: "all",
             min_stock: "",
             max_stock: "",
+            per_page: 15,
         });
 
         get(route("reports.stock"), {
-            data: { category_id: "all", min_stock: "", max_stock: "" },
+            data: {
+                category_id: "all",
+                min_stock: "",
+                max_stock: "",
+                per_page: 15,
+            },
             preserveState: true,
             preserveScroll: true,
         });
@@ -73,14 +87,95 @@ export default function StockReport({ auth, products, categories, filters }) {
 
     const handleExport = (type) => {
         setIsExporting(true);
-        // Reset setelah 3 detik untuk mengaktifkan kembali tombol
         setTimeout(() => setIsExporting(false), 3000);
     };
 
-    // Hitung statistik stok rendah
-    const lowStockCount = products.data.filter(product => 
-        product.current_stock <= (product.minimum_stock || 0)
-    ).length;
+    const formatCurrency = (amount) => {
+        return new Intl.NumberFormat("id-ID", {
+            style: "currency",
+            currency: "IDR",
+            minimumFractionDigits: 0,
+        }).format(amount || 0);
+    };
+
+    const formatNumber = (num) => {
+        return new Intl.NumberFormat("id-ID").format(num || 0);
+    };
+
+    // Use summary data from controller or calculate from products
+    const getTotalProducts = () =>
+        summary.total_products || products.data.length;
+    const getLowStockCount = () =>
+        summary.low_stock_count ||
+        products.data.filter(
+            (product) =>
+                product.reorder_status?.urgent ||
+                product.current_stock <= (product.rop || 0)
+        ).length;
+    const getZeroStockCount = () =>
+        summary.zero_stock_count ||
+        products.data.filter((product) => product.current_stock <= 0).length;
+    const getTotalValue = () =>
+        summary.total_value ||
+        products.data.reduce(
+            (total, product) =>
+                total + product.current_stock * (product.price || 0),
+            0
+        );
+
+    const getStockStatusBadge = (product) => {
+        // Use reorder_status from controller if available
+        if (product.reorder_status) {
+            const status = product.reorder_status;
+            let colorClasses = "";
+
+            switch (status.status) {
+                case "out_of_stock":
+                    colorClasses = "bg-gray-100 text-gray-800";
+                    break;
+                case "below_rop":
+                    colorClasses = "bg-red-100 text-red-800";
+                    break;
+                case "normal":
+                    colorClasses = "bg-green-100 text-green-800";
+                    break;
+                default:
+                    colorClasses = "bg-yellow-100 text-yellow-800";
+            }
+
+            return {
+                status: status.message,
+                color: colorClasses,
+                icon: status.urgent ? (
+                    <AlertTriangle className="h-3 w-3" />
+                ) : null,
+            };
+        }
+
+        // Fallback calculation
+        const currentStock = product.current_stock || 0;
+        const rop = product.rop || 0;
+
+        if (currentStock <= 0) {
+            return {
+                status: "Habis",
+                color: "bg-gray-100 text-gray-800",
+                icon: <AlertTriangle className="h-3 w-3" />,
+            };
+        } else if (currentStock <= rop) {
+            return {
+                status: "Stok Rendah",
+                color: "bg-red-100 text-red-800",
+                icon: <AlertTriangle className="h-3 w-3" />,
+            };
+        } else {
+            return {
+                status: "Normal",
+                color: "bg-green-100 text-green-800",
+                icon: null,
+            };
+        }
+    };
 
     return (
         <Layout
@@ -94,67 +189,21 @@ export default function StockReport({ auth, products, categories, filters }) {
             <Head title="Laporan Stok" />
 
             <div className="py-8">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
-                    
-                    {/* Statistik Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                        <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white border-0 shadow-xl">
-                            <CardContent className="p-6">
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <p className="text-blue-100 text-sm font-medium">Total Produk</p>
-                                        <p className="text-3xl font-bold">{products.data.length}</p>
-                                    </div>
-                                    <Package className="h-12 w-12 text-blue-200" />
-                                </div>
-                            </CardContent>
-                        </Card>
-
-                        <Card className={`${lowStockCount > 0 ? 'bg-gradient-to-r from-red-500 to-red-600' : 'bg-gradient-to-r from-green-500 to-green-600'} text-white border-0 shadow-xl`}>
-                            <CardContent className="p-6">
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <p className={`${lowStockCount > 0 ? 'text-red-100' : 'text-green-100'} text-sm font-medium`}>
-                                            Stok Rendah
-                                        </p>
-                                        <p className="text-3xl font-bold">{lowStockCount}</p>
-                                    </div>
-                                    <AlertTriangle className={`h-12 w-12 ${lowStockCount > 0 ? 'text-red-200' : 'text-green-200'}`} />
-                                </div>
-                            </CardContent>
-                        </Card>
-
-                        <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white border-0 shadow-xl">
-                            <CardContent className="p-6">
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <p className="text-purple-100 text-sm font-medium">Kategori Aktif</p>
-                                        <p className="text-3xl font-bold">{categories.length}</p>
-                                    </div>
-                                    <Filter className="h-12 w-12 text-purple-200" />
-                                </div>
-                            </CardContent>
-                        </Card>
-                    </div>
-
-                    {/* Filter Card */}
-                    <Card className="shadow-sm border border-gray-200">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                    {/* Bagian Filter */}
+                    <Card className="mb-8 p-4 shadow-lg rounded-lg border border-gray-200">
                         <CardHeader className="pb-4">
-                            <CardTitle className="text-xl font-semibold text-gray-800">
+                            <CardTitle className="text-2xl font-semibold text-gray-700">
                                 Filter Laporan Stok
                             </CardTitle>
                         </CardHeader>
-                        <CardContent className="p-6">
+                        <CardContent>
                             <form
                                 onSubmit={handleFilter}
-                                className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 items-end gap-6"
+                                className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end"
                             >
-                                {/* Filter berdasarkan Kategori */}
                                 <div className="space-y-2">
-                                    <Label
-                                        htmlFor="category_id"
-                                        className="text-gray-700 font-medium text-sm"
-                                    >
+                                    <Label className="text-gray-600 font-medium">
                                         Kategori Produk
                                     </Label>
                                     <Select
@@ -163,7 +212,7 @@ export default function StockReport({ auth, products, categories, filters }) {
                                         }
                                         value={data.category_id}
                                     >
-                                        <SelectTrigger className="w-full">
+                                        <SelectTrigger className="focus:ring-indigo-500 focus:border-indigo-500">
                                             <SelectValue placeholder="Pilih kategori" />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -181,96 +230,196 @@ export default function StockReport({ auth, products, categories, filters }) {
                                         </SelectContent>
                                     </Select>
                                 </div>
-
-                                {/* Filter berdasarkan Stok Minimum */}
                                 <div className="space-y-2">
-                                    <Label
-                                        htmlFor="min_stock"
-                                        className="text-gray-700 font-medium text-sm"
-                                    >
+                                    <Label className="text-gray-600 font-medium">
                                         Stok Minimum
                                     </Label>
                                     <Input
-                                        id="min_stock"
                                         type="number"
                                         min="0"
-                                        placeholder="contoh: 10"
+                                        placeholder="Contoh: 10"
                                         value={data.min_stock}
                                         onChange={(e) =>
                                             setData("min_stock", e.target.value)
                                         }
-                                        className="focus:ring-blue-500 focus:border-blue-500"
+                                        className="focus:ring-indigo-500 focus:border-indigo-500"
                                     />
                                 </div>
-
-                                {/* Filter berdasarkan Stok Maksimum */}
                                 <div className="space-y-2">
-                                    <Label
-                                        htmlFor="max_stock"
-                                        className="text-gray-700 font-medium text-sm"
-                                    >
+                                    <Label className="text-gray-600 font-medium">
                                         Stok Maksimum
                                     </Label>
                                     <Input
-                                        id="max_stock"
                                         type="number"
                                         min="0"
-                                        placeholder="contoh: 100"
+                                        placeholder="Contoh: 100"
                                         value={data.max_stock}
                                         onChange={(e) =>
                                             setData("max_stock", e.target.value)
                                         }
-                                        className="focus:ring-blue-500 focus:border-blue-500"
+                                        className="focus:ring-indigo-500 focus:border-indigo-500"
                                     />
                                 </div>
 
-                                {/* Tombol Filter dan Reset */}
-                                <div className="col-span-full md:col-span-1 flex justify-end gap-3 pt-6 md:pt-0">
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        onClick={handleResetFilters}
-                                        disabled={processing}
-                                        className="w-full md:w-auto"
+                                <div className="space-y-2">
+                                    <Label className="text-gray-600 font-medium">
+                                        Items per Page
+                                    </Label>
+                                    <Select
+                                        onValueChange={(value) =>
+                                            setData("per_page", value)
+                                        }
+                                        value={data.per_page.toString()}
                                     >
-                                        Reset Filter
-                                    </Button>
+                                        <SelectTrigger className="focus:ring-indigo-500 focus:border-indigo-500">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="10">
+                                                10
+                                            </SelectItem>
+                                            <SelectItem value="15">
+                                                15
+                                            </SelectItem>
+                                            <SelectItem value="25">
+                                                25
+                                            </SelectItem>
+                                            <SelectItem value="50">
+                                                50
+                                            </SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="flex gap-2 pt-2">
                                     <Button
                                         type="submit"
                                         disabled={processing}
-                                        className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white"
+                                        className="bg-indigo-600 text-white hover:bg-indigo-700"
                                     >
-                                        {processing ? "Memuat..." : "Terapkan Filter"}
+                                        {processing
+                                            ? "Menerapkan..."
+                                            : "Terapkan Filter"}
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={handleReset}
+                                        disabled={processing}
+                                    >
+                                        Reset
                                     </Button>
                                 </div>
                             </form>
                         </CardContent>
                     </Card>
 
-                    {/* Tabel Laporan Stok */}
-                    <Card className="shadow-sm border border-gray-200">
-                        <CardHeader className="pb-4">
-                            <CardTitle className="text-xl font-semibold text-gray-800 flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <FileText className="h-5 w-5 text-gray-600" />
-                                    <span>Tingkat Stok Saat Ini</span>
-                                    {products.data.length > 0 && (
-                                        <span className="text-sm font-normal text-gray-500">
-                                            ({products.data.length} produk)
-                                        </span>
-                                    )}
-                                </div>
-                                {lowStockCount > 0 && (
-                                    <div className="bg-red-100 text-red-800 px-3 py-1 rounded-full text-sm font-medium flex items-center gap-1">
-                                        <AlertTriangle className="h-4 w-4" />
-                                        {lowStockCount} Stok Rendah
+                    {/* Kartu Ringkasan */}
+                    {(products.data.length > 0 ||
+                        Object.keys(summary).length > 0) && (
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                            <Card className="bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200">
+                                <CardContent className="p-6">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <div className="text-2xl font-bold text-blue-600">
+                                                {getTotalProducts()}
+                                            </div>
+                                            <div className="text-sm text-gray-600">
+                                                Total Produk
+                                            </div>
+                                        </div>
+                                        <Package className="h-12 w-12 text-blue-500 opacity-80" />
                                     </div>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="bg-gradient-to-r from-green-50 to-green-100 border border-green-200">
+                                <CardContent className="p-6">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <div className="text-2xl font-bold text-green-600">
+                                                {formatCurrency(
+                                                    getTotalValue()
+                                                )}
+                                            </div>
+                                            <div className="text-sm text-gray-600">
+                                                Nilai Total Stok
+                                            </div>
+                                        </div>
+                                        <DollarSign className="h-12 w-12 text-green-500 opacity-80" />
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            <Card
+                                className={`${
+                                    getLowStockCount() > 0
+                                        ? "bg-gradient-to-r from-red-50 to-red-100 border border-red-200"
+                                        : "bg-gradient-to-r from-emerald-50 to-emerald-100 border border-emerald-200"
+                                }`}
+                            >
+                                <CardContent className="p-6">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <div
+                                                className={`text-2xl font-bold ${
+                                                    getLowStockCount() > 0
+                                                        ? "text-red-600"
+                                                        : "text-emerald-600"
+                                                }`}
+                                            >
+                                                {getLowStockCount()}
+                                            </div>
+                                            <div className="text-sm text-gray-600">
+                                                Stok Rendah
+                                            </div>
+                                        </div>
+                                        <AlertTriangle
+                                            className={`h-12 w-12 ${
+                                                getLowStockCount() > 0
+                                                    ? "text-red-500"
+                                                    : "text-emerald-500"
+                                            } opacity-80`}
+                                        />
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="bg-gradient-to-r from-gray-50 to-gray-100 border border-gray-200">
+                                <CardContent className="p-6">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <div className="text-2xl font-bold text-gray-600">
+                                                {getZeroStockCount()}
+                                            </div>
+                                            <div className="text-sm text-gray-600">
+                                                Stok Habis
+                                            </div>
+                                        </div>
+                                        <AlertCircle className="h-12 w-12 text-gray-500 opacity-80" />
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </div>
+                    )}
+
+                    {/* Tabel Laporan Stok */}
+                    <Card className="shadow-lg rounded-lg border border-gray-200">
+                        <CardHeader className="pb-4">
+                            <CardTitle className="text-2xl font-semibold text-gray-700 flex items-center gap-2">
+                                <Package className="h-6 w-6" />
+                                Laporan Stok
+                                {products.data.length > 0 && (
+                                    <span className="text-sm font-normal text-gray-500">
+                                        ({products.data.length} produk)
+                                    </span>
                                 )}
                             </CardTitle>
                         </CardHeader>
-                        <CardContent className="p-0">
-                            <div className="overflow-x-auto">
-                                <Table className="min-w-full">
+                        <CardContent>
+                            <div className="overflow-x-auto rounded-md border">
+                                <Table className="min-w-full divide-y divide-gray-200">
                                     <TableHeader className="bg-gray-50">
                                         <TableRow>
                                             <TableHead className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -283,68 +432,115 @@ export default function StockReport({ auth, products, categories, filters }) {
                                                 Kategori
                                             </TableHead>
                                             <TableHead className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                Satuan
+                                                Supplier
                                             </TableHead>
                                             <TableHead className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                                                 Stok Saat Ini
+                                            </TableHead>
+                                            <TableHead className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                ROP
+                                            </TableHead>
+                                            <TableHead className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                EOQ
+                                            </TableHead>
+                                            <TableHead className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                Nilai Stok
+                                            </TableHead>
+                                            <TableHead className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                Status
                                             </TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody className="bg-white divide-y divide-gray-200">
                                         {products.data.length > 0 ? (
-                                            products.data.map((product) => (
-                                                <TableRow
-                                                    key={product.id}
-                                                    className="hover:bg-gray-50 transition-colors"
-                                                >
-                                                    <TableCell className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                                        {product.sku}
-                                                    </TableCell>
-                                                    <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                                                        {product.name}
-                                                    </TableCell>
-                                                    <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                                                        {product.category?.name || "Tidak Ada"}
-                                                    </TableCell>
-                                                    <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                                                        {product.unit?.name || "Tidak Ada"}
-                                                    </TableCell>
-                                                    <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-center">
-                                                        <div className="flex items-center justify-center gap-2">
-                                                            <span
-                                                                className={`font-semibold ${
-                                                                    product.current_stock <= (product.minimum_stock || 0)
-                                                                        ? "text-red-600"
-                                                                        : "text-gray-700"
-                                                                }`}
-                                                            >
-                                                                {product.current_stock}
-                                                            </span>
-                                                            {product.current_stock <= (product.minimum_stock || 0) && (
-                                                                <AlertTriangle className="h-4 w-4 text-red-500" />
+                                            products.data.map((product) => {
+                                                const stockStatus =
+                                                    getStockStatusBadge(
+                                                        product
+                                                    );
+                                                const stockValue =
+                                                    (product.current_stock ||
+                                                        0) *
+                                                    (product.price || 0);
+
+                                                return (
+                                                    <TableRow
+                                                        key={product.id}
+                                                        className="hover:bg-gray-50 transition-colors"
+                                                    >
+                                                        <TableCell className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                                            {product.sku ||
+                                                                product.code ||
+                                                                "-"}
+                                                        </TableCell>
+                                                        <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                                                            {product.name}
+                                                        </TableCell>
+                                                        <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                                                            {product.category
+                                                                ?.name || "-"}
+                                                        </TableCell>
+                                                        <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                                                            {product.supplier
+                                                                ?.name || "-"}
+                                                        </TableCell>
+                                                        <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-center font-medium text-blue-600">
+                                                            {formatNumber(
+                                                                product.current_stock
                                                             )}
-                                                        </div>
-                                                    </TableCell>
-                                                </TableRow>
-                                            ))
+                                                        </TableCell>
+                                                        <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-center text-orange-600 font-medium">
+                                                            {formatNumber(
+                                                                product.rop
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-center text-green-600 font-medium">
+                                                            {formatNumber(
+                                                                product.eoq
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-right text-purple-600 font-medium">
+                                                            {formatCurrency(
+                                                                stockValue
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-center">
+                                                            <span
+                                                                className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${stockStatus.color}`}
+                                                            >
+                                                                {
+                                                                    stockStatus.icon
+                                                                }
+                                                                {
+                                                                    stockStatus.status
+                                                                }
+                                                            </span>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                );
+                                            })
                                         ) : (
                                             <TableRow>
                                                 <TableCell
-                                                    colSpan={5}
+                                                    colSpan={9}
                                                     className="px-6 py-8 text-center text-sm text-gray-500"
                                                 >
                                                     <div className="flex flex-col items-center gap-2">
                                                         <AlertCircle className="h-8 w-8 text-gray-400" />
                                                         <span>
-                                                            Tidak ditemukan produk yang sesuai dengan filter.
+                                                            Tidak ada data
+                                                            produk yang sesuai
+                                                            dengan filter.
                                                         </span>
                                                         <Button
                                                             variant="outline"
                                                             size="sm"
-                                                            onClick={handleResetFilters}
+                                                            onClick={
+                                                                handleReset
+                                                            }
                                                             className="mt-2"
                                                         >
-                                                            Reset Filter
+                                                            Hapus Filter
                                                         </Button>
                                                     </div>
                                                 </TableCell>
@@ -354,27 +550,23 @@ export default function StockReport({ auth, products, categories, filters }) {
                                 </Table>
                             </div>
 
-                            {/* Pagination Links */}
+                            {/* Paginasi */}
                             {products.links && products.links.length > 3 && (
-                                <div className="flex justify-center mt-8 p-6">
+                                <div className="flex justify-center mt-6">
                                     <nav className="flex items-center space-x-2">
-                                        {products.links.map((link, index) => (
+                                        {products.links.map((link, idx) => (
                                             <Link
-                                                key={index}
+                                                key={idx}
                                                 href={link.url || "#"}
-                                                className={`
-                                                    inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-md transition-colors duration-200 ease-in-out
-                                                    ${
-                                                        link.active
-                                                            ? "bg-blue-600 text-white shadow-md hover:bg-blue-700"
-                                                            : "text-gray-700 bg-white border border-gray-300 hover:bg-gray-100"
-                                                    }
-                                                    ${
-                                                        !link.url
-                                                            ? "cursor-not-allowed opacity-60"
-                                                            : ""
-                                                    }
-                                                `}
+                                                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                                                    link.active
+                                                        ? "bg-indigo-600 text-white shadow"
+                                                        : "bg-white border border-gray-300 text-gray-700 hover:bg-gray-100"
+                                                } ${
+                                                    !link.url
+                                                        ? "cursor-not-allowed opacity-50"
+                                                        : ""
+                                                }`}
                                                 dangerouslySetInnerHTML={{
                                                     __html: link.label,
                                                 }}
@@ -385,7 +577,7 @@ export default function StockReport({ auth, products, categories, filters }) {
                             )}
                         </CardContent>
 
-                        {/* Tombol Export */}
+                        {/* Tombol Ekspor */}
                         <div className="p-6 flex justify-end items-center gap-4 border-t border-gray-200">
                             <a
                                 href={route("reports.stock.exportPdf", data)}
@@ -398,7 +590,9 @@ export default function StockReport({ auth, products, categories, filters }) {
                                     className="bg-red-600 hover:bg-red-700 text-white shadow-sm flex items-center gap-2"
                                 >
                                     <Download className="h-4 w-4" />
-                                    {isExporting ? "Mengekspor..." : "Ekspor PDF"}
+                                    {isExporting
+                                        ? "Mengekspor..."
+                                        : "Ekspor PDF"}
                                 </Button>
                             </a>
                             <a
@@ -412,7 +606,9 @@ export default function StockReport({ auth, products, categories, filters }) {
                                     className="bg-green-600 hover:bg-green-700 text-white shadow-sm flex items-center gap-2"
                                 >
                                     <Download className="h-4 w-4" />
-                                    {isExporting ? "Mengekspor..." : "Ekspor Excel"}
+                                    {isExporting
+                                        ? "Mengekspor..."
+                                        : "Ekspor Excel"}
                                 </Button>
                             </a>
                         </div>

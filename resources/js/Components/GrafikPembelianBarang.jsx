@@ -1,69 +1,70 @@
 import React from "react";
 import {
-    BarChart, // Menggunakan BarChart untuk grafik batang
+    BarChart,
     Bar,
     XAxis,
     YAxis,
     CartesianGrid,
     Tooltip,
     ResponsiveContainer,
-    ReferenceLine, // Untuk menampilkan garis rata-rata
+    ReferenceLine,
 } from "recharts";
-
 import {
     Card,
     CardHeader,
     CardTitle,
     CardDescription,
     CardContent,
-    CardFooter, // Digunakan untuk legenda di bagian bawah
+    CardFooter,
 } from "@/components/ui/card";
+import { ShoppingCart } from "lucide-react";
 
-// Menggunakan ikon yang relevan untuk pembelian dan rata-rata
-import { ShoppingCart, Scale } from "lucide-react";
-
-const pembelianData = [
-    { month: "Jan", total: 120 },
-    { month: "Feb", total: 200 },
-    { month: "Mar", total: 180 },
-    { month: "Apr", total: 150 },
-    { month: "May", total: 210 },
-    { month: "Jun", total: 190 },
-];
-
-// Komponen Tooltip Kustom untuk kejelasan
 const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
+        const data = payload[0].payload;
         return (
             <div className="rounded-lg border bg-background p-2 shadow-sm">
-                <p className="text-sm font-bold text-muted-foreground">{`Bulan: ${label}`}</p>
-                <p className="text-sm text-indigo-500">{`Pembelian: ${payload[0].value} unit`}</p>
+                <p className="text-sm font-bold text-muted-foreground">{`${data.month} ${data.year}`}</p>
+                <p className="text-sm text-indigo-500">{`Total: Rp ${payload[0].value.toLocaleString(
+                    "id-ID"
+                )}`}</p>
             </div>
         );
     }
     return null;
 };
 
-export default function GrafikPembelianBarang() {
-    // Menghitung rata-rata pembelian untuk garis referensi
-    const totalPembelianKeseluruhan = pembelianData.reduce(
-        (sum, item) => sum + item.total,
+export default function GrafikPembelianBarang({ data = [] }) {
+    // Fallback data jika tidak ada data dari database
+    const defaultData = [
+        { month: "Jan", year: "2024", total: 0 },
+        { month: "Feb", year: "2024", total: 0 },
+        { month: "Mar", year: "2024", total: 0 },
+        { month: "Apr", year: "2024", total: 0 },
+        { month: "May", year: "2024", total: 0 },
+        { month: "Jun", year: "2024", total: 0 },
+    ];
+
+    const chartData = data && data.length > 0 ? data : defaultData;
+    const totalPembelian = chartData.reduce(
+        (sum, item) => sum + (item.total || 0),
         0
     );
-    const rataRataPembelian = totalPembelianKeseluruhan / pembelianData.length;
+    const rataRataPembelian =
+        chartData.length > 0 ? totalPembelian / chartData.length : 0;
 
     return (
         <Card className="shadow-centered border-none">
             <CardHeader>
-                <CardTitle>Grafik Pembelian Barang</CardTitle>
+                <CardTitle>Grafik Tren Pembelian</CardTitle>
                 <CardDescription>
-                    Tren pembelian bulanan (Januari - Juni 2024)
+                    Tren pembelian dalam 6 bulan terakhir
                 </CardDescription>
             </CardHeader>
 
             <CardContent className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={pembelianData}>
+                    <BarChart data={chartData}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} />
                         <XAxis
                             dataKey="month"
@@ -75,48 +76,65 @@ export default function GrafikPembelianBarang() {
                             tickLine={false}
                             axisLine={false}
                             className="text-sm"
+                            tickFormatter={(value) => {
+                                if (value >= 1000000) {
+                                    return `${(value / 1000000).toFixed(1)}M`;
+                                } else if (value >= 1000) {
+                                    return `${(value / 1000).toFixed(0)}K`;
+                                }
+                                return value;
+                            }}
                         />
-                        {/* Menggunakan Tooltip kustom */}
                         <Tooltip content={<CustomTooltip />} />
                         <Bar
                             dataKey="total"
-                            fill="#4338CA" // Warna biru-ungu untuk batang (indigo-500)
-                            radius={[4, 4, 0, 0]} // Sudut membulat di bagian atas batang
+                            fill="#4338CA"
+                            radius={[4, 4, 0, 0]}
                         />
-                        {/* Garis rata-rata, dengan label dan warna yang jelas */}
-                        <ReferenceLine
-                            y={rataRataPembelian}
-                            label={{
-                                value: `Rata-rata: ${rataRataPembelian.toFixed(
-                                    0
-                                )} unit`,
-                                position: "right",
-                                fill: "#EF4444", // Warna merah untuk garis rata-rata (red-500)
-                                offset: 10,
-                            }}
-                            stroke="#EF4444" // Warna merah
-                            strokeDasharray="3 3" // Garis putus-putus
-                        />
+                        {rataRataPembelian > 0 && (
+                            <ReferenceLine
+                                y={rataRataPembelian}
+                                label={{
+                                    value: `Rata-rata: Rp ${
+                                        rataRataPembelian >= 1000000
+                                            ? (
+                                                  rataRataPembelian / 1000000
+                                              ).toFixed(1) + "M"
+                                            : (
+                                                  rataRataPembelian / 1000
+                                              ).toFixed(0) + "K"
+                                    }`,
+                                    position: "right",
+                                    fill: "#EF4444",
+                                    offset: 10,
+                                }}
+                                stroke="#EF4444"
+                                strokeDasharray="3 3"
+                            />
+                        )}
                     </BarChart>
                 </ResponsiveContainer>
             </CardContent>
 
             <CardFooter className="flex flex-col items-start gap-2 pt-4">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    {/* Simbol warna untuk batang, menggunakan div kecil sebagai pengganti ikon untuk batang */}
                     <div className="h-4 w-4 rounded-sm bg-indigo-700" />
                     <span>
-                        <b className="text-indigo-500">Batang Ungu:</b> Jumlah
-                        total unit barang yang dibeli setiap bulan.
+                        <b className="text-indigo-500">Batang Ungu:</b> Total
+                        nilai pembelian per bulan.
                     </span>
                 </div>
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <div className="h-4 w-4 rounded-sm bg-red-500" />
-                    <span>
-                        <b className="text-red-500">Garis Putus-putus Merah:</b>{" "}
-                        Rata-rata pembelian barang selama periode ini.
-                    </span>
-                </div>
+                {rataRataPembelian > 0 && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <div className="h-4 w-4 rounded-sm bg-red-500" />
+                        <span>
+                            <b className="text-red-500">
+                                Garis Putus-putus Merah:
+                            </b>{" "}
+                            Rata-rata pembelian bulanan.
+                        </span>
+                    </div>
+                )}
             </CardFooter>
         </Card>
     );

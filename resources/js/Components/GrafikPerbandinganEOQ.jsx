@@ -7,107 +7,114 @@ import {
     YAxis,
     Tooltip,
     ResponsiveContainer,
-    ReferenceLine, // Tetap disertakan jaga-jaga jika ingin menambahkan garis rata-rata di masa depan
 } from "recharts";
-
 import {
     Card,
     CardHeader,
     CardTitle,
     CardDescription,
     CardContent,
-    CardFooter, // Digunakan untuk legenda dan keterangan
+    CardFooter,
 } from "@/components/ui/card";
 
-// Icons yang relevan
-import { TrendingUp, TrendingDown, LayoutDashboard } from "lucide-react"; // Menggunakan LayoutDashboard untuk representasi umum perbandingan/dashboard
-
-// 📊 Data EOQ vs Pembelian Aktual
-const chartData = [
-    { month: "Jan", eoq: 200, aktual: 180 },
-    { month: "Feb", eoq: 220, aktual: 190 },
-    { month: "Mar", eoq: 210, aktual: 240 },
-    { month: "Apr", eoq: 230, aktual: 220 },
-    { month: "May", eoq: 240, aktual: 210 },
-    { month: "Jun", eoq: 250, aktual: 230 },
-];
-
-// 🎨 Konfigurasi warna dan label
-const chartConfig = {
-    eoq: {
-        label: "EOQ",
-        color: "#4338CA", // indigo-700
-    },
-    aktual: {
-        label: "Pembelian Aktual",
-        color: "#22C55E", // green-500
-    },
-};
-
-// Custom Tooltip component untuk keterbacaan yang lebih baik
 const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
-        // Mendapatkan warna dari chartConfig
-        const eoqColor = chartConfig.eoq.color;
-        const aktualColor = chartConfig.aktual.color;
-
+        const data = payload[0].payload;
         return (
             <div className="rounded-lg border bg-background p-2 shadow-sm">
-                <p className="text-sm font-bold text-muted-foreground">{`Bulan: ${label}`}</p>
-                <p
-                    className="text-sm"
-                    style={{ color: eoqColor }}
-                >{`EOQ: ${payload[0].value} unit`}</p>
-                <p
-                    className="text-sm"
-                    style={{ color: aktualColor }}
-                >{`Aktual: ${payload[1].value} unit`}</p>
+                <p className="text-sm font-bold text-muted-foreground">
+                    {data.name}
+                </p>
+                <p className="text-sm text-indigo-500">{`EOQ: ${
+                    payload.find((p) => p.dataKey === "eoq")?.value || 0
+                } unit`}</p>
+                <p className="text-sm text-green-500">{`Stok: ${
+                    payload.find((p) => p.dataKey === "current_stock")?.value ||
+                    0
+                } unit`}</p>
+                <p className="text-sm text-orange-500">{`ROP: ${
+                    data.rop || 0
+                } unit`}</p>
+                {data.sku && (
+                    <p className="text-xs text-gray-400">{`SKU: ${data.sku}`}</p>
+                )}
             </div>
         );
     }
     return null;
 };
 
-export default function GrafikPerbandinganEOQ() {
+export default function GrafikPerbandinganEOQ({ data = [] }) {
+    // Transform data untuk chart dengan fallback
+    const chartData =
+        data && data.length > 0
+            ? data.slice(0, 10).map((item) => ({
+                  name: item.name
+                      ? item.name.length > 15
+                          ? item.name.substring(0, 15) + "..."
+                          : item.name
+                      : "Unknown",
+                  eoq: item.eoq || 0,
+                  current_stock: item.current_stock || 0,
+                  rop: item.rop || 0,
+                  stock_level: item.stock_level || "normal",
+                  sku: item.sku || "",
+              }))
+            : [
+                  {
+                      name: "Belum ada data",
+                      eoq: 0,
+                      current_stock: 0,
+                      rop: 0,
+                      sku: "",
+                  },
+              ];
+
     return (
         <Card className="shadow-centered border-none">
             <CardHeader>
-                <CardTitle>
-                    Grafik Perbandingan EOQ vs Pembelian Aktual
-                </CardTitle>
-                <CardDescription>Januari - Juni 2024</CardDescription>
+                <CardTitle>Grafik Perbandingan EOQ vs Stok Aktual</CardTitle>
+                <CardDescription>
+                    Top 10 Produk dengan EOQ Tertinggi ({data.length || 0}{" "}
+                    produk)
+                </CardDescription>
             </CardHeader>
 
             <CardContent className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={chartData} barGap={8}>
+                    <BarChart
+                        data={chartData}
+                        barGap={8}
+                        margin={{ bottom: 60 }}
+                    >
                         <CartesianGrid strokeDasharray="3 3" vertical={false} />
                         <XAxis
-                            dataKey="month"
+                            dataKey="name"
                             tickLine={false}
                             axisLine={false}
                             className="text-sm"
+                            angle={-45}
+                            textAnchor="end"
+                            height={80}
+                            interval={0}
+                            tick={{ fontSize: 10 }}
                         />
                         <YAxis
                             tickLine={false}
                             axisLine={false}
                             className="text-sm"
                         />
-                        {/* Menggunakan Tooltip kustom */}
                         <Tooltip content={<CustomTooltip />} />
-                        {/* Menghilangkan Legend bawaan Recharts karena akan dibuat di CardFooter */}
-                        {/* <Legend /> */}
-
                         <Bar
                             dataKey="eoq"
-                            name={chartConfig.eoq.label} // Penting untuk Tooltip kustom
-                            fill={chartConfig.eoq.color}
+                            name="EOQ"
+                            fill="#4338CA"
                             radius={[4, 4, 0, 0]}
                         />
                         <Bar
-                            dataKey="aktual"
-                            name={chartConfig.aktual.label} // Penting untuk Tooltip kustom
-                            fill={chartConfig.aktual.color}
+                            dataKey="current_stock"
+                            name="Stok Saat Ini"
+                            fill="#22C55E"
                             radius={[4, 4, 0, 0]}
                         />
                     </BarChart>
@@ -116,25 +123,17 @@ export default function GrafikPerbandinganEOQ() {
 
             <CardFooter className="flex flex-col items-start gap-2 pt-4">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    {/* Simbol warna untuk batang EOQ */}
-                    <div
-                        className="h-4 w-4 rounded-sm"
-                        style={{ backgroundColor: chartConfig.eoq.color }}
-                    />
+                    <div className="h-4 w-4 rounded-sm bg-indigo-700" />
                     <span>
                         <b className="text-indigo-500">Batang Ungu (EOQ):</b>{" "}
-                        Kuantitas Pesanan Ekonomis yang disarankan.
+                        Kuantitas pesanan ekonomis yang disarankan.
                     </span>
                 </div>
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    {/* Simbol warna untuk batang Aktual */}
-                    <div
-                        className="h-4 w-4 rounded-sm"
-                        style={{ backgroundColor: chartConfig.aktual.color }}
-                    />
+                    <div className="h-4 w-4 rounded-sm bg-green-500" />
                     <span>
-                        <b className="text-green-500">Batang Hijau (Aktual):</b>{" "}
-                        Jumlah unit barang yang benar-benar dibeli.
+                        <b className="text-green-500">Batang Hijau:</b> Stok
+                        saat ini di gudang.
                     </span>
                 </div>
             </CardFooter>

@@ -5,7 +5,6 @@ namespace App\Providers;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use App\Models\Product;
-//use App\Models\Setting;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\Facades\Schema;
@@ -16,35 +15,72 @@ use App\Models\User;
 
 class AppServiceProvider extends ServiceProvider
 {
-    /**
-     * Register any application services.
-     */
     public function register(): void
     {
         //
     }
 
-    /**
-     * Bootstrap any application services.
-     */
     public function boot(): void
-{
-    // 🔧 Ini penting untuk polymorphic relation Spatie agar bisa kerja
-    Relation::morphMap([
-        'users' => User::class,
-    ]);
+    {
+        // Polymorphic relation mapping
+        Relation::morphMap([
+            'users' => User::class,
+        ]);
 
-    Vite::prefetch(concurrency: 3);
+        Vite::prefetch(concurrency: 3);
 
-    if (Schema::hasTable('settings')) {
-        $settings = \App\Models\Setting::first();
-        Inertia::share('settings', $settings);
+        // Settings share
+        if (Schema::hasTable('settings')) {
+            $settings = \App\Models\Setting::first();
+            Inertia::share('settings', $settings);
+        }
+
+        // Register Observer
+        \App\Models\Product::observe(\App\Observers\ProductObserver::class);
+
+        // NOTIFICATIONS - menggunakan data dari database notifications
+        // Ganti bagian ropWarnings di AppServiceProvider.php:
+        Inertia::share('ropWarnings', function () {
+            $user = request()->user();
+
+            if (!$user || !Schema::hasTable('notifications')) {
+                return [];
+            }
+
+            // Ambil SEMUA notifications (tidak hanya unread)
+            return $user->notifications()
+                ->where('type', \App\Notifications\LowStockNotification::class)
+                ->latest()
+                ->take(5)
+                ->get()
+                ->map(function ($notification) {
+                    $data = $notification->data;
+                    return [
+                        'id' => $notification->id,
+                        'product_id' => $data['product_id'],
+                        'name' => $data['product_name'],
+                        'sku' => $data['product_sku'],
+                        'stock' => $data['current_stock'],
+                        'rop' => $data['rop'],
+                        'urgency_level' => $data['urgency_level'],
+                        'urgency_label' => $data['urgency_label'],
+                        'color' => $data['color'],
+                        'message' => $data['message'],
+                        'created_at' => $notification->created_at->diffForHumans(),
+                    ];
+                });
+        });
+
+        Inertia::share('unreadNotificationsCount', function () {
+            $user = request()->user();
+
+            if (!$user || !Schema::hasTable('notifications')) {
+                return 0;
+            }
+
+            return $user->unreadNotifications()
+                ->where('type', \App\Notifications\LowStockNotification::class)
+                ->count();
+        });
     }
-
-    Inertia::share('ropWarnings', function () {
-        return Product::whereColumn('current_stock', '<', 'rop')
-            ->get(['id', 'name', 'current_stock as stock', 'rop']);
-    });
-}
-
 }

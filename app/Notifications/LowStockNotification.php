@@ -6,63 +6,129 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
-use App\Models\Product; // Pastikan mengimpor model Product
+use App\Models\Product;
 
 class LowStockNotification extends Notification
 {
     use Queueable;
 
     protected $product;
+    protected $rop;
 
-    /**
-     * Create a new notification instance.
-     */
-    public function __construct(Product $product)
+    public function __construct(Product $product, float $rop = null)
     {
         $this->product = $product;
+        $this->rop = $rop ?? $this->calculateROP($product);
     }
 
-    /**
-     * Get the notification's delivery channels.
-     *
-     * @return array<int, string>
-     */
     public function via(object $notifiable): array
     {
-        // Kita akan menggunakan channel 'database' untuk notifikasi dalam aplikasi
-        // Anda bisa menambahkan 'mail' jika ingin mengirim email juga
-        return ['database'];
+        return ['database']; // Hanya database notification untuk sekarang
     }
 
-    /**
-     * Get the mail representation of the notification.
-     */
-    public function toMail(object $notifiable): MailMessage
+    public function toDatabase(object $notifiable): array
     {
-        // Ini adalah contoh jika Anda ingin mengirim notifikasi via email
-        // Pastikan konfigurasi email di .env sudah benar
-        return (new MailMessage)
-            ->line('The product ' . $this->product->name . ' (SKU: ' . $this->product->sku . ') is running low on stock.')
-            ->action('View Product', url('/products/' . $this->product->id . '/edit')) // Link ke halaman edit produk
-            ->line('Current stock: ' . $this->product->current_stock . ', Reorder Point (ROP): ' . $this->product->rop);
-    }
+        $urgency = $this->getUrgencyLevel();
 
-    /**
-     * Get the array representation of the notification.
-     * Digunakan untuk menyimpan notifikasi ke database.
-     *
-     * @return array<string, mixed>
-     */
-    public function toArray(object $notifiable): array
-    {
         return [
             'product_id' => $this->product->id,
             'product_name' => $this->product->name,
             'product_sku' => $this->product->sku,
+            'product_code' => $this->product->code,
             'current_stock' => $this->product->current_stock,
-            'rop' => $this->product->rop,
-            'message' => "Stok {$this->product->name} (SKU: {$this->product->sku}) sudah di bawah ROP. Stok saat ini: {$this->product->current_stock}, ROP: {$this->product->rop}. Segera lakukan pemesanan.",
-            'type' => 'low_stock', // Tipe notifikasi untuk memudahkan filter di frontend
+            'rop' => round($this->rop, 0),
+            'urgency_level' => $urgency,
+            'urgency_label' => $this->getUrgencyLabel($urgency),
+            'supplier_name' => $this->product->supplier?->name,
+            'title' => $this->getNotificationTitle($urgency),
+            'message' => $this->getNotificationMessage(),
+            'action_url' => '/products/' . $this->product->id,
+            'type' => 'low_stock',
+            'icon' => $this->getNotificationIcon($urgency),
+            'color' => $this->getNotificationColor($urgency),
+            'stock_percentage' => round(($this->product->current_stock / max($this->rop, 1)) * 100, 1),
         ];
+    }
+
+    public function toArray(object $notifiable): array
+    {
+        return $this->toDatabase($notifiable);
+    }
+
+    private function calculateROP(Product $product): float
+    {
+        return $product->calculateRop();
+    }
+
+    private function getUrgencyLevel(): string
+    {
+        if ($this->product->current_stock <= 0) {
+            return 'out_of_stock';
+        }
+
+        $stockRatio = $this->product->current_stock / max($this->rop, 1);
+
+        if ($stockRatio <= 0.25) {
+            return 'critical';
+        } elseif ($stockRatio <= 0.5) {
+            return 'high';
+        } elseif ($stockRatio <= 0.75) {
+            return 'medium';
+        } else {
+            return 'low';
+        }
+    }
+
+    private function getUrgencyLabel(string $urgency): string
+    {
+        return match ($urgency) {
+            'out_of_stock' => 'HABIS',
+            'critical' => 'KRITIS',
+            'high' => 'Sangat Rendah',
+            'medium' => 'Rendah',
+            default => 'Menipis'
+        };
+    }
+
+    private function getNotificationTitle(string $urgency): string
+    {
+        return match ($urgency) {
+            'out_of_stock' => 'Stok Habis',
+            'critical' => 'URGENT: Stok Hampir Habis',
+            'high' => 'PENTING: Stok Sangat Rendah',
+            'medium' => 'Peringatan: Stok Rendah',
+            default => 'Info: Stok Menipis'
+        };
+    }
+
+    private function getNotificationMessage(): string
+    {
+        $percentage = round(($this->product->current_stock / max($this->rop, 1)) * 100, 1);
+
+        return "Produk {$this->product->name} (SKU: {$this->product->sku}) memerlukan perhatian. " .
+            "Stok saat ini: " . number_format($this->product->current_stock) . " unit ({$percentage}% dari ROP). " .
+            "ROP: " . number_format($this->rop, 0) . " unit. Segera lakukan pemesanan.";
+    }
+
+    private function getNotificationIcon(string $urgency): string
+    {
+        return match ($urgency) {
+            'out_of_stock' => 'x-circle',
+            'critical' => 'alert-triangle',
+            'high' => 'alert-circle',
+            'medium' => 'info',
+            default => 'bell'
+        };
+    }
+
+    private function getNotificationColor(string $urgency): string
+    {
+        return match ($urgency) {
+            'out_of_stock' => 'gray',
+            'critical' => 'red',
+            'high' => 'orange',
+            'medium' => 'yellow',
+            default => 'blue'
+        };
     }
 }

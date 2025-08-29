@@ -46,7 +46,13 @@ Route::get('/', function () {
 
 // Routes yang memerlukan autentikasi dan verifikasi email
 Route::middleware(['auth', 'verified'])->group(function () {
-
+    Route::prefix('notifications')->name('notifications.')->group(function () {
+        Route::get('/', [App\Http\Controllers\NotificationController::class, 'index'])->name('index');
+        Route::patch('/{id}/read', [App\Http\Controllers\NotificationController::class, 'markAsRead'])->name('read');
+        Route::patch('/read-all', [App\Http\Controllers\NotificationController::class, 'markAllAsRead'])->name('read-all');
+        Route::delete('/{id}', [App\Http\Controllers\NotificationController::class, 'destroy'])->name('destroy');
+        Route::get('/unread-count', [App\Http\Controllers\NotificationController::class, 'getUnreadCount'])->name('unread-count');
+    });
     // Dashboard bisa diakses semua role yang punya permission view-dashboard
     Route::get('/dashboard', [DashboardController::class, 'index'])
         ->middleware('check.permission:view-dashboard')

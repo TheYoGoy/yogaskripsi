@@ -48,7 +48,7 @@ class StockOut extends Model
      */
     protected $appends = [
         'customer_name',
-        'formatted_quantity', 
+        'formatted_quantity',
         'formatted_date'
     ];
 
@@ -146,11 +146,11 @@ class StockOut extends Model
         } catch (\Exception $e) {
             $prefix = 'SOUT-';
         }
-        
+
         $latestId = static::max('id') ?? 0;
         $nextId = $latestId + 1;
         $code = $prefix . str_pad($nextId, 5, '0', STR_PAD_LEFT);
-        
+
         // Pastikan unique
         $attempts = 0;
         while (static::where('code', $code)->exists() && $attempts < 100) {
@@ -158,7 +158,7 @@ class StockOut extends Model
             $code = $prefix . str_pad($nextId, 5, '0', STR_PAD_LEFT);
             $attempts++;
         }
-        
+
         return $code;
     }
 
@@ -167,9 +167,9 @@ class StockOut extends Model
      */
     public function scopeByDate($query, $date)
     {
-        return $query->where(function($q) use ($date) {
+        return $query->where(function ($q) use ($date) {
             $q->whereDate('date', $date)
-              ->orWhereDate('transaction_date', $date);
+                ->orWhereDate('transaction_date', $date);
         });
     }
 
@@ -178,9 +178,9 @@ class StockOut extends Model
      */
     public function scopeByDateRange($query, $startDate, $endDate)
     {
-        return $query->where(function($q) use ($startDate, $endDate) {
+        return $query->where(function ($q) use ($startDate, $endDate) {
             $q->whereBetween('date', [$startDate, $endDate])
-              ->orWhereBetween('transaction_date', [$startDate, $endDate]);
+                ->orWhereBetween('transaction_date', [$startDate, $endDate]);
         });
     }
 
@@ -207,15 +207,15 @@ class StockOut extends Model
     {
         return $query->where(function ($q) use ($search) {
             $q->where('code', 'like', "%{$search}%")
-              ->orWhere('customer', 'like', "%{$search}%")
-              ->orWhereHas('product', function ($productQuery) use ($search) {
-                  $productQuery->where('name', 'like', "%{$search}%")
-                               ->orWhere('sku', 'like', "%{$search}%")
-                               ->orWhere('code', 'like', "%{$search}%");
-              })
-              ->orWhereHas('user', function ($userQuery) use ($search) {
-                  $userQuery->where('name', 'like', "%{$search}%");
-              });
+                ->orWhere('customer', 'like', "%{$search}%")
+                ->orWhereHas('product', function ($productQuery) use ($search) {
+                    $productQuery->where('name', 'like', "%{$search}%")
+                        ->orWhere('sku', 'like', "%{$search}%")
+                        ->orWhere('code', 'like', "%{$search}%");
+                })
+                ->orWhereHas('user', function ($userQuery) use ($search) {
+                    $userQuery->where('name', 'like', "%{$search}%");
+                });
         });
     }
 
@@ -224,9 +224,9 @@ class StockOut extends Model
      */
     public function scopeToday($query)
     {
-        return $query->where(function($q) {
+        return $query->where(function ($q) {
             $q->whereDate('date', today())
-              ->orWhereDate('transaction_date', today());
+                ->orWhereDate('transaction_date', today());
         });
     }
 
@@ -235,12 +235,12 @@ class StockOut extends Model
      */
     public function scopeThisMonth($query)
     {
-        return $query->where(function($q) {
+        return $query->where(function ($q) {
             $q->whereMonth('date', now()->month)->whereYear('date', now()->year)
-              ->orWhere(function($subQ) {
-                  $subQ->whereMonth('transaction_date', now()->month)
-                       ->whereYear('transaction_date', now()->year);
-              });
+                ->orWhere(function ($subQ) {
+                    $subQ->whereMonth('transaction_date', now()->month)
+                        ->whereYear('transaction_date', now()->year);
+                });
         });
     }
 
@@ -249,9 +249,9 @@ class StockOut extends Model
      */
     public function scopeThisYear($query)
     {
-        return $query->where(function($q) {
+        return $query->where(function ($q) {
             $q->whereYear('date', now()->year)
-              ->orWhereYear('transaction_date', now()->year);
+                ->orWhereYear('transaction_date', now()->year);
         });
     }
 
@@ -269,8 +269,14 @@ class StockOut extends Model
     public function scopeOrderBySafe($query, $column, $direction = 'asc')
     {
         $allowedColumns = [
-            'id', 'code', 'quantity', 'date', 'transaction_date', 
-            'created_at', 'updated_at', 'customer'
+            'id',
+            'code',
+            'quantity',
+            'date',
+            'transaction_date',
+            'created_at',
+            'updated_at',
+            'customer'
         ];
 
         if (in_array($column, $allowedColumns)) {

@@ -1,89 +1,102 @@
 import React from "react";
 import {
-    AreaChart,
-    Area,
+    LineChart,
+    Line,
     XAxis,
     YAxis,
     CartesianGrid,
     Tooltip,
     ResponsiveContainer,
-    ReferenceLine, // Ditambahkan untuk garis referensi jika diperlukan (misal: stok minimum)
+    ReferenceLine,
 } from "recharts";
-
 import {
     Card,
     CardHeader,
     CardTitle,
     CardDescription,
     CardContent,
-    CardFooter, // Ditambahkan untuk legenda dan keterangan
+    CardFooter,
 } from "@/components/ui/card";
+import { TrendingUp, TrendingDown } from "lucide-react";
 
-// Icons yang relevan
-import { Package, LineChart as LineChartIcon } from "lucide-react"; // Menggunakan Package untuk stok, LineChartIcon untuk tren
-
-const stokData = [
-    { month: "Jan", stock: 500 },
-    { month: "Feb", stock: 470 },
-    { month: "Mar", stock: 440 },
-    { month: "Apr", stock: 460 },
-    { month: "May", stock: 420 },
-    { month: "Jun", stock: 390 },
-];
-
-// Custom Tooltip component untuk keterbacaan yang lebih baik
 const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
+        const data = payload[0].payload;
         return (
             <div className="rounded-lg border bg-background p-2 shadow-sm">
-                <p className="text-sm font-bold text-muted-foreground">{`Bulan: ${label}`}</p>
-                <p className="text-sm text-emerald-500">{`Stok: ${payload[0].value} unit`}</p>
+                <p className="text-sm font-bold text-muted-foreground">{`${
+                    data.day || label
+                }`}</p>
+                <p className="text-sm text-green-500">{`Stok Masuk: ${
+                    data.stock_in || 0
+                } unit`}</p>
+                <p className="text-sm text-red-500">{`Stok Keluar: ${
+                    data.stock_out || 0
+                } unit`}</p>
+                <p className="text-sm text-blue-500">{`Net Movement: ${
+                    data.net_movement || 0
+                } unit`}</p>
             </div>
         );
     }
     return null;
 };
 
-export default function GrafikTrenKetersediaan() {
-    // Anda bisa menambahkan perhitungan rata-rata atau stok minimum di sini jika ingin menambahkan ReferenceLine
-    // const rataRataStok = stokData.reduce((sum, item) => sum + item.stock, 0) / stokData.length;
-    const stokMinimumTarget = 400; // Contoh: target stok minimum
+export default function GrafikTrenStok({ data = [] }) {
+    // Fallback data untuk 7 hari terakhir
+    const defaultData = Array.from({ length: 7 }, (_, i) => {
+        const date = new Date();
+        date.setDate(date.getDate() - (6 - i));
+        return {
+            date: date.toISOString().split("T")[0],
+            day: ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"][
+                date.getDay()
+            ],
+            stock_in: 0,
+            stock_out: 0,
+            net_movement: 0,
+        };
+    });
+
+    const chartData = data && data.length > 0 ? data : defaultData;
+
+    // Hitung trend
+    const totalNetMovement = chartData.reduce(
+        (sum, item) => sum + (item.net_movement || 0),
+        0
+    );
+    const avgNetMovement =
+        chartData.length > 0 ? totalNetMovement / chartData.length : 0;
+
+    const isPositiveTrend = avgNetMovement > 0;
 
     return (
         <Card className="shadow-centered border-none">
             <CardHeader>
-                <CardTitle>Grafik Tren Ketersediaan Barang</CardTitle>
+                <CardTitle>Grafik Pergerakan Stok Harian</CardTitle>
                 <CardDescription>
-                    Stok Gudang per Bulan (Januari - Juni 2024)
+                    Stok masuk vs keluar dalam 7 hari terakhir
+                    {avgNetMovement !== 0 && (
+                        <span
+                            className={`ml-2 font-semibold ${
+                                isPositiveTrend
+                                    ? "text-green-600"
+                                    : "text-red-600"
+                            }`}
+                        >
+                            (Trend: {isPositiveTrend ? "+" : ""}
+                            {avgNetMovement.toFixed(1)} unit/hari)
+                        </span>
+                    )}
                 </CardDescription>
             </CardHeader>
 
             <CardContent className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={stokData}>
-                        <defs>
-                            <linearGradient
-                                id="colorStock"
-                                x1="0"
-                                y1="0"
-                                x2="0"
-                                y2="1"
-                            >
-                                <stop
-                                    offset="5%"
-                                    stopColor="#10B981" // Emerald-500 for a consistent green shade
-                                    stopOpacity={0.8}
-                                />
-                                <stop
-                                    offset="95%"
-                                    stopColor="#10B981"
-                                    stopOpacity={0}
-                                />
-                            </linearGradient>
-                        </defs>
+                    <LineChart data={chartData}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} />
                         <XAxis
-                            dataKey="month"
+                            dataKey="day"
                             tickLine={false}
                             axisLine={false}
                             className="text-sm"
@@ -92,70 +105,119 @@ export default function GrafikTrenKetersediaan() {
                             tickLine={false}
                             axisLine={false}
                             className="text-sm"
-                            label={{
-                                angle: -90,
-                                position: "insideLeft",
-                                offset: 5,
-                                style: {
-                                    textAnchor: "middle",
-                                    fontSize: "12px",
-                                    fill: "#6b7280",
-                                },
-                            }} // Label sumbu Y
                         />
-                        {/* Menggunakan Tooltip kustom */}
                         <Tooltip content={<CustomTooltip />} />
-                        <Area
+
+                        {/* Garis Stok Masuk */}
+                        <Line
                             type="monotone"
-                            dataKey="stock"
-                            stroke="#10B981" // Emerald-500
+                            dataKey="stock_in"
+                            stroke="#22C55E"
                             strokeWidth={2}
-                            fillOpacity={1}
-                            fill="url(#colorStock)"
                             dot={{
                                 r: 4,
-                                fill: "#10B981",
+                                fill: "#22C55E",
                                 stroke: "#fff",
                                 strokeWidth: 2,
-                            }} // Dots for clarity on the line
+                            }}
                             activeDot={{
-                                r: 8,
-                                stroke: "#10B981",
+                                r: 6,
+                                stroke: "#22C55E",
                                 strokeWidth: 2,
                             }}
+                            name="Stok Masuk"
                         />
-                        {/* Contoh ReferenceLine untuk stok minimum */}
-                        <ReferenceLine
-                            y={stokMinimumTarget}
-                            label={{
-                                value: `Target Stok Min: ${stokMinimumTarget} unit`,
-                                position: "right",
-                                fill: "#EF4444", // Merah untuk peringatan
-                                offset: 10,
+
+                        {/* Garis Stok Keluar */}
+                        <Line
+                            type="monotone"
+                            dataKey="stock_out"
+                            stroke="#EF4444"
+                            strokeWidth={2}
+                            dot={{
+                                r: 4,
+                                fill: "#EF4444",
+                                stroke: "#fff",
+                                strokeWidth: 2,
                             }}
-                            stroke="#EF4444" // red-500
-                            strokeDasharray="3 3"
+                            activeDot={{
+                                r: 6,
+                                stroke: "#EF4444",
+                                strokeWidth: 2,
+                            }}
+                            name="Stok Keluar"
                         />
-                    </AreaChart>
+
+                        {/* Garis Net Movement */}
+                        <Line
+                            type="monotone"
+                            dataKey="net_movement"
+                            stroke="#3B82F6"
+                            strokeWidth={3}
+                            dot={{
+                                r: 5,
+                                fill: "#3B82F6",
+                                stroke: "#fff",
+                                strokeWidth: 2,
+                            }}
+                            activeDot={{
+                                r: 7,
+                                stroke: "#3B82F6",
+                                strokeWidth: 2,
+                            }}
+                            strokeDasharray="5 5"
+                            name="Net Movement"
+                        />
+
+                        {/* Garis referensi di 0 */}
+                        <ReferenceLine
+                            y={0}
+                            stroke="#6B7280"
+                            strokeDasharray="2 2"
+                        />
+                    </LineChart>
                 </ResponsiveContainer>
             </CardContent>
 
             <CardFooter className="flex flex-col items-start gap-2 pt-4">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    {/* Simbol warna untuk area/garis */}
-                    <LineChartIcon className="h-4 w-4 text-green-500" />{" "}
-                    {/* Ikon garis untuk tren */}
+                    <div className="h-4 w-4 rounded-full bg-green-500" />
                     <span>
-                        <b className="text-green-500">Area Hijau:</b> Jumlah
-                        stok barang di gudang setiap bulan.
+                        <b className="text-green-500">Garis Hijau:</b> Jumlah
+                        stok masuk harian.
                     </span>
                 </div>
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <div className="h-4 w-4 rounded-sm bg-red-500" />
-                    {/* Ikon kotak untuk stok/batas */}
+                    <div className="h-4 w-4 rounded-full bg-red-500" />
                     <span>
-                        <b className="text-red-500">Garis Putus-putus Merah:</b>{" "}
-                        Target stok minimum untuk peringatan.
+                        <b className="text-red-500">Garis Merah:</b> Jumlah stok
+                        keluar harian.
+                    </span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <div
+                        className="h-4 w-4 border-2 border-blue-500 rounded-full bg-white"
+                        style={{ borderStyle: "dashed" }}
+                    />
+                    <span>
+                        <b className="text-blue-500">Garis Putus Biru:</b> Net
+                        movement (masuk - keluar).
+                    </span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    {isPositiveTrend ? (
+                        <TrendingUp className="h-4 w-4 text-green-500" />
+                    ) : (
+                        <TrendingDown className="h-4 w-4 text-red-500" />
+                    )}
+                    <span
+                        className={
+                            isPositiveTrend ? "text-green-600" : "text-red-600"
+                        }
+                    >
+                        <b>Trend:</b> Rata-rata{" "}
+                        {isPositiveTrend ? "kenaikan" : "penurunan"} stok
+                        {Math.abs(avgNetMovement).toFixed(1)} unit per hari.
                     </span>
                 </div>
             </CardFooter>
