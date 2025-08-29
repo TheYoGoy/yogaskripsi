@@ -27,6 +27,9 @@ class Product extends Model
         'price',
         'lead_time',
         'daily_usage_rate',
+        'minimum_stock',
+        'holding_cost_percentage',
+        'ordering_cost',
     ];
 
     protected $casts = [
@@ -36,6 +39,9 @@ class Product extends Model
         'current_stock' => 'integer',
         'price' => 'decimal:2',
         'lead_time' => 'integer',
+        'minimum_stock' => 'integer',
+        'holding_cost_percentage' => 'float',
+        'ordering_cost' => 'decimal:2',
     ];
 
     /**
@@ -87,32 +93,32 @@ class Product extends Model
     }
 
     /**
-     * Hitung ROP.
-     * ROP = rata-rata pemakaian harian * lead time + safety stock.
+     * Hitung ROP berdasarkan input form user
+     * ROP = (Daily Usage × Lead Time) + Safety Stock
      */
     public function calculateRop(): int
     {
-        $dailyUsage = $this->daily_usage_rate ?? $this->calculateDailyUsageRate();
-        $leadTime = $this->lead_time ?? 7; // Default 7 hari
-        $safetyStock = 5; // Fixed safety stock 5 unit
+        $dailyUsage = $this->daily_usage_rate ?? 0.5;
+        $leadTime = $this->lead_time ?? 7;
+        $safetyStock = $this->minimum_stock ?? 10;
 
         $rop = (int) round($dailyUsage * $leadTime + $safetyStock);
 
-        return max($rop, 5); // Minimal ROP 5 unit
+        return max($rop, 1);
     }
 
     /**
-     * Hitung EOQ.
-     * EOQ = √((2 × annual demand × ordering cost) / holding cost)
+     * Hitung EOQ berdasarkan input form user
+     * EOQ = √((2 × Annual Demand × Ordering Cost) / (Price × Holding Cost %))
      */
     public function calculateEoq(): int
     {
-        $dailyUsage = $this->daily_usage_rate ?? $this->calculateDailyUsageRate();
+        $dailyUsage = $this->daily_usage_rate ?? 0.5;
         $annualDemand = $dailyUsage * 365;
 
-        // Fixed values tanpa settings
-        $orderingCost = 50000; // Rp 50.000 per order
-        $holdingCost = 2000;   // Rp 2.000 per unit per tahun
+        $orderingCost = $this->ordering_cost ?? 25000;
+        $holdingCostPercentage = $this->holding_cost_percentage ?? 0.2;
+        $holdingCost = ($this->price ?? 0) * $holdingCostPercentage;
 
         if ($holdingCost <= 0 || $annualDemand <= 0) {
             return 0;
@@ -121,7 +127,7 @@ class Product extends Model
         $numerator = 2 * $annualDemand * $orderingCost;
         $eoq = (int) round(sqrt($numerator / $holdingCost));
 
-        return max($eoq, 1); // Minimal EOQ 1 unit
+        return max($eoq, 1);
     }
 
     /**

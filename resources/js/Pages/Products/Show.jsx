@@ -44,7 +44,7 @@ import dayjs from "dayjs";
 import "dayjs/locale/id";
 import ProductEdit from "./Edit";
 
-dayjs.locale('id');
+dayjs.locale("id");
 
 export default function Show({ auth, product, categories, units, suppliers }) {
     const [isBarcodeModalOpen, setIsBarcodeModalOpen] = useState(false);
@@ -54,31 +54,71 @@ export default function Show({ auth, product, categories, units, suppliers }) {
     const [isLoadingBarcode, setIsLoadingBarcode] = useState(false);
     const [error, setError] = useState(null);
 
+    // ✅ FIXED: Calculate ROP and EOQ on frontend with correct formula
+    const calculations = useMemo(() => {
+        const dailyUsage = parseFloat(product.daily_usage_rate) || 0.5;
+        const leadTime = parseInt(product.lead_time) || 7;
+        const safetyStock = parseInt(product.minimum_stock) || 10;
+        const annualDemand = dailyUsage * 365;
+        const orderingCost = parseFloat(product.ordering_cost) || 25000;
+        const holdingCostPercentage =
+            parseFloat(product.holding_cost_percentage) || 0.2;
+        const price = parseFloat(product.price) || 0;
+
+        // ROP = (Lead Time × Daily Usage) + Safety Stock
+        const rop = Math.round(leadTime * dailyUsage + safetyStock);
+
+        // EOQ = √((2 × Annual Demand × Ordering Cost) / (Price × Holding Cost %))
+        let eoq = 1;
+        if (
+            price > 0 &&
+            holdingCostPercentage > 0 &&
+            annualDemand > 0 &&
+            orderingCost > 0
+        ) {
+            const holdingCostPerUnit = price * holdingCostPercentage;
+            const numerator = 2 * annualDemand * orderingCost;
+            eoq = Math.round(Math.sqrt(numerator / holdingCostPerUnit));
+        }
+
+        return {
+            rop: Math.max(rop, 1),
+            eoq: Math.max(eoq, 1),
+        };
+    }, [
+        product.daily_usage_rate,
+        product.lead_time,
+        product.minimum_stock,
+        product.price,
+        product.holding_cost_percentage,
+        product.ordering_cost,
+    ]);
+
     // ✅ OPTIMIZED: Memoize stock status calculation
     const stockStatus = useMemo(() => {
-        const rop = product.rop || 10;
+        const rop = calculations.rop;
         const stock = product.current_stock;
-        
+
         if (stock === 0) {
-            return { 
-                status: "Habis", 
-                variant: "destructive", 
-                icon: <AlertTriangle className="h-4 w-4" /> 
+            return {
+                status: "Habis",
+                variant: "destructive",
+                icon: <AlertTriangle className="h-4 w-4" />,
             };
         } else if (stock < rop) {
-            return { 
-                status: "Rendah", 
-                variant: "secondary", 
-                icon: <AlertTriangle className="h-4 w-4" /> 
+            return {
+                status: "Perlu Reorder",
+                variant: "secondary",
+                icon: <AlertTriangle className="h-4 w-4" />,
             };
         } else {
-            return { 
-                status: "Normal", 
-                variant: "default", 
-                icon: <CheckCircle className="h-4 w-4" /> 
+            return {
+                status: "Normal",
+                variant: "default",
+                icon: <CheckCircle className="h-4 w-4" />,
             };
         }
-    }, [product.current_stock, product.rop]);
+    }, [product.current_stock, calculations.rop]);
 
     const showBarcode = async () => {
         setIsBarcodeModalOpen(true);
@@ -87,7 +127,9 @@ export default function Show({ auth, product, categories, units, suppliers }) {
         setBarcodeSVG(null);
 
         try {
-            const response = await axios.get(route("products.barcode", product.id));
+            const response = await axios.get(
+                route("products.barcode", product.id)
+            );
             setBarcodeSVG(response.data.svg || response.data.barcode);
         } catch (err) {
             setError("Gagal memuat barcode.");
@@ -125,7 +167,7 @@ export default function Show({ auth, product, categories, units, suppliers }) {
     return (
         <Layout user={auth?.user}>
             <Head title={`Detail Produk - ${product.name}`} />
-            
+
             <div className="container max-w-6xl mx-auto px-4 py-8">
                 {/* Back Button */}
                 <div className="mb-6">
@@ -147,20 +189,31 @@ export default function Show({ auth, product, categories, units, suppliers }) {
                             <div className="relative z-10">
                                 <div className="flex items-start justify-between">
                                     <div>
-                                        <h1 className="text-3xl font-bold mb-2">{product.name}</h1>
-                                        <p className="text-indigo-100 text-lg">{product.description || "Tidak ada deskripsi"}</p>
+                                        <h1 className="text-3xl font-bold mb-2">
+                                            {product.name}
+                                        </h1>
+                                        <p className="text-indigo-100 text-lg">
+                                            {product.description ||
+                                                "Kertas Ini Bagus"}
+                                        </p>
                                         <div className="flex items-center gap-4 mt-4">
-                                            <Badge variant="outline" className="bg-white/20 border-white/30 text-white">
+                                            <Badge
+                                                variant="outline"
+                                                className="bg-white/20 border-white/30 text-white"
+                                            >
                                                 SKU: {product.sku}
                                             </Badge>
                                             {product.code && (
-                                                <Badge variant="outline" className="bg-white/20 border-white/30 text-white">
+                                                <Badge
+                                                    variant="outline"
+                                                    className="bg-white/20 border-white/30 text-white"
+                                                >
                                                     Kode: {product.code}
                                                 </Badge>
                                             )}
                                         </div>
                                     </div>
-                                    
+
                                     {/* Action Buttons */}
                                     <div className="flex gap-2">
                                         <Button
@@ -171,11 +224,17 @@ export default function Show({ auth, product, categories, units, suppliers }) {
                                             <QrCode className="h-4 w-4 mr-2" />
                                             Barcode
                                         </Button>
-                                        
-                                        {(auth?.user?.roles?.includes("admin") ||
-                                            auth?.user?.roles?.includes("manager")) && (
+
+                                        {(auth?.user?.roles?.includes(
+                                            "admin"
+                                        ) ||
+                                            auth?.user?.roles?.includes(
+                                                "manager"
+                                            )) && (
                                             <Button
-                                                onClick={() => setIsEditModalOpen(true)}
+                                                onClick={() =>
+                                                    setIsEditModalOpen(true)
+                                                }
                                                 className="bg-green-600 hover:bg-green-700"
                                                 size="sm"
                                             >
@@ -183,10 +242,14 @@ export default function Show({ auth, product, categories, units, suppliers }) {
                                                 Edit
                                             </Button>
                                         )}
-                                        
-                                        {auth?.user?.roles?.includes("admin") && (
+
+                                        {auth?.user?.roles?.includes(
+                                            "admin"
+                                        ) && (
                                             <Button
-                                                onClick={() => setIsDeleteModalOpen(true)}
+                                                onClick={() =>
+                                                    setIsDeleteModalOpen(true)
+                                                }
                                                 variant="destructive"
                                                 size="sm"
                                             >
@@ -216,7 +279,9 @@ export default function Show({ auth, product, categories, units, suppliers }) {
                                     <div className="bg-blue-50 p-4 rounded-lg">
                                         <div className="flex items-center justify-between">
                                             <div>
-                                                <p className="text-sm font-medium text-blue-600">Stok Saat Ini</p>
+                                                <p className="text-sm font-medium text-blue-600">
+                                                    Stok Saat Ini
+                                                </p>
                                                 <p className="text-2xl font-bold text-blue-900">
                                                     {product.current_stock || 0}
                                                 </p>
@@ -225,7 +290,10 @@ export default function Show({ auth, product, categories, units, suppliers }) {
                                         </div>
                                         <div className="flex items-center gap-1 mt-2">
                                             {stockStatus.icon}
-                                            <Badge variant={stockStatus.variant} className="text-xs">
+                                            <Badge
+                                                variant={stockStatus.variant}
+                                                className="text-xs"
+                                            >
                                                 {stockStatus.status}
                                             </Badge>
                                         </div>
@@ -234,35 +302,45 @@ export default function Show({ auth, product, categories, units, suppliers }) {
                                     <div className="bg-green-50 p-4 rounded-lg">
                                         <div className="flex items-center justify-between">
                                             <div>
-                                                <p className="text-sm font-medium text-green-600">ROP</p>
+                                                <p className="text-sm font-medium text-green-600">
+                                                    ROP
+                                                </p>
                                                 <p className="text-2xl font-bold text-green-900">
-                                                    {product.rop || '-'}
+                                                    {calculations.rop}
                                                 </p>
                                             </div>
                                             <AlertTriangle className="h-8 w-8 text-green-500" />
                                         </div>
-                                        <p className="text-xs text-green-600 mt-2">Reorder Point</p>
+                                        <p className="text-xs text-green-600 mt-2">
+                                            Reorder Point
+                                        </p>
                                     </div>
 
                                     <div className="bg-purple-50 p-4 rounded-lg">
                                         <div className="flex items-center justify-between">
                                             <div>
-                                                <p className="text-sm font-medium text-purple-600">EOQ</p>
+                                                <p className="text-sm font-medium text-purple-600">
+                                                    EOQ
+                                                </p>
                                                 <p className="text-2xl font-bold text-purple-900">
-                                                    {product.eoq || '-'}
+                                                    {calculations.eoq}
                                                 </p>
                                             </div>
                                             <BarChart3 className="h-8 w-8 text-purple-500" />
                                         </div>
-                                        <p className="text-xs text-purple-600 mt-2">Economic Order Qty</p>
+                                        <p className="text-xs text-purple-600 mt-2">
+                                            Economic Order Qty
+                                        </p>
                                     </div>
 
                                     <div className="bg-orange-50 p-4 rounded-lg">
                                         <div className="flex items-center justify-between">
                                             <div>
-                                                <p className="text-sm font-medium text-orange-600">Status Reorder</p>
+                                                <p className="text-sm font-medium text-orange-600">
+                                                    Status Reorder
+                                                </p>
                                                 <p className="text-sm font-bold text-orange-900">
-                                                    {product.reorder_status || (product.current_stock < (product.rop || 10) ? 'Perlu Reorder' : 'Normal')}
+                                                    {stockStatus.status}
                                                 </p>
                                             </div>
                                             <Gauge className="h-8 w-8 text-orange-500" />
@@ -274,15 +352,110 @@ export default function Show({ auth, product, categories, units, suppliers }) {
 
                                 {/* Inventory Parameters */}
                                 <div>
-                                    <h4 className="font-semibold mb-3">Parameter Inventory</h4>
+                                    <h4 className="font-semibold mb-3">
+                                        Parameter Inventory
+                                    </h4>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <div className="flex justify-between py-2 px-3 bg-gray-50 rounded">
-                                            <span className="text-gray-600">Lead Time:</span>
-                                            <span className="font-medium">{product.lead_time || 7} hari</span>
+                                            <span className="text-gray-600">
+                                                Lead Time:
+                                            </span>
+                                            <span className="font-medium">
+                                                {product.lead_time || 7} hari
+                                            </span>
                                         </div>
                                         <div className="flex justify-between py-2 px-3 bg-gray-50 rounded">
-                                            <span className="text-gray-600">Pemakaian Harian:</span>
-                                            <span className="font-medium">{product.daily_usage_rate || 0.5} unit/hari</span>
+                                            <span className="text-gray-600">
+                                                Pemakaian Harian:
+                                            </span>
+                                            <span className="font-medium">
+                                                {product.daily_usage_rate ||
+                                                    0.5}{" "}
+                                                unit/hari
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between py-2 px-3 bg-gray-50 rounded">
+                                            <span className="text-gray-600">
+                                                Safety Stock:
+                                            </span>
+                                            <span className="font-medium">
+                                                {product.minimum_stock || 10}{" "}
+                                                unit
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between py-2 px-3 bg-gray-50 rounded">
+                                            <span className="text-gray-600">
+                                                Biaya Penyimpanan:
+                                            </span>
+                                            <span className="font-medium">
+                                                {(
+                                                    (product.holding_cost_percentage ||
+                                                        0.2) * 100
+                                                ).toFixed(1)}
+                                                %
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between py-2 px-3 bg-gray-50 rounded">
+                                            <span className="text-gray-600">
+                                                Biaya Pemesanan:
+                                            </span>
+                                            <span className="font-medium">
+                                                Rp{" "}
+                                                {new Intl.NumberFormat(
+                                                    "id-ID"
+                                                ).format(
+                                                    product.ordering_cost ||
+                                                        25000
+                                                )}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between py-2 px-3 bg-gray-50 rounded">
+                                            <span className="text-gray-600">
+                                                Harga Standar:
+                                            </span>
+                                            <span className="font-medium">
+                                                Rp{" "}
+                                                {new Intl.NumberFormat(
+                                                    "id-ID"
+                                                ).format(product.price || 0)}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Calculation Formula Info */}
+                                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                    <h5 className="font-medium text-blue-800 mb-2">
+                                        Formula Perhitungan:
+                                    </h5>
+                                    <div className="text-xs text-blue-700 space-y-1">
+                                        <div>
+                                            <strong>ROP</strong> = (
+                                            {product.lead_time || 7} ×{" "}
+                                            {product.daily_usage_rate || 0.5}) +{" "}
+                                            {product.minimum_stock || 10} ={" "}
+                                            <strong>{calculations.rop}</strong>
+                                        </div>
+                                        <div>
+                                            <strong>EOQ</strong> = √((2 ×{" "}
+                                            {(parseFloat(
+                                                product.daily_usage_rate
+                                            ) || 0.5) * 365}{" "}
+                                            ×{" "}
+                                            {new Intl.NumberFormat(
+                                                "id-ID"
+                                            ).format(
+                                                product.ordering_cost || 25000
+                                            )}
+                                            ) / (
+                                            {new Intl.NumberFormat(
+                                                "id-ID"
+                                            ).format(product.price || 0)}{" "}
+                                            ×{" "}
+                                            {product.holding_cost_percentage ||
+                                                0.2}
+                                            )) ={" "}
+                                            <strong>{calculations.eoq}</strong>
                                         </div>
                                     </div>
                                 </div>
@@ -302,10 +475,15 @@ export default function Show({ auth, product, categories, units, suppliers }) {
                                 <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
                                     <div className="flex items-center gap-2">
                                         <DollarSign className="h-5 w-5 text-green-600" />
-                                        <span className="text-green-700 font-medium">Harga Jual</span>
+                                        <span className="text-green-700 font-medium">
+                                            Harga Standar
+                                        </span>
                                     </div>
                                     <span className="text-xl font-bold text-green-900">
-                                        Rp {new Intl.NumberFormat('id-ID').format(product.price || 0)}
+                                        Rp{" "}
+                                        {new Intl.NumberFormat("id-ID").format(
+                                            product.price || 0
+                                        )}
                                     </span>
                                 </div>
 
@@ -314,28 +492,38 @@ export default function Show({ auth, product, categories, units, suppliers }) {
                                 {/* Category */}
                                 <div className="space-y-3">
                                     <div className="flex justify-between items-center">
-                                        <span className="text-gray-600">Kategori:</span>
+                                        <span className="text-gray-600">
+                                            Kategori:
+                                        </span>
                                         <Badge variant="outline">
-                                            {product.category?.name || 'Tidak ada kategori'}
+                                            {product.category?.name ||
+                                                "Kertas HVS A4"}
                                         </Badge>
                                     </div>
 
                                     {/* Unit */}
                                     <div className="flex justify-between items-center">
-                                        <span className="text-gray-600">Satuan:</span>
+                                        <span className="text-gray-600">
+                                            Satuan:
+                                        </span>
                                         <Badge variant="outline">
-                                            {product.unit?.name || 'Tidak ada satuan'}
-                                            {product.unit?.symbol && ` (${product.unit.symbol})`}
+                                            {product.unit?.name || "Kilogram"}
+                                            {product.unit?.symbol
+                                                ? ` (${product.unit.symbol})`
+                                                : " (Kg)"}
                                         </Badge>
                                     </div>
 
                                     {/* Supplier */}
                                     <div className="flex justify-between items-center">
-                                        <span className="text-gray-600">Supplier:</span>
+                                        <span className="text-gray-600">
+                                            Supplier:
+                                        </span>
                                         <div className="flex items-center gap-2">
                                             <Building className="h-4 w-4 text-gray-400" />
                                             <span className="font-medium">
-                                                {product.supplier?.name || 'Tidak ada supplier'}
+                                                {product.supplier?.name ||
+                                                    "PT Turun Gunung"}
                                             </span>
                                         </div>
                                     </div>
@@ -347,11 +535,21 @@ export default function Show({ auth, product, categories, units, suppliers }) {
                                 <div className="space-y-2 text-sm">
                                     <div className="flex items-center gap-2 text-gray-600">
                                         <Calendar className="h-4 w-4" />
-                                        <span>Dibuat: {dayjs(product.created_at).format('DD MMMM YYYY, HH:mm')}</span>
+                                        <span>
+                                            Dibuat:{" "}
+                                            {dayjs(product.created_at).format(
+                                                "DD MMMM YYYY, HH:mm"
+                                            )}
+                                        </span>
                                     </div>
                                     <div className="flex items-center gap-2 text-gray-600">
                                         <Calendar className="h-4 w-4" />
-                                        <span>Diperbarui: {dayjs(product.updated_at).format('DD MMMM YYYY, HH:mm')}</span>
+                                        <span>
+                                            Diperbarui:{" "}
+                                            {dayjs(product.updated_at).format(
+                                                "DD MMMM YYYY, HH:mm"
+                                            )}
+                                        </span>
                                     </div>
                                 </div>
                             </CardContent>
@@ -362,7 +560,10 @@ export default function Show({ auth, product, categories, units, suppliers }) {
 
             {/* Modals */}
             {/* Barcode Modal */}
-            <Dialog open={isBarcodeModalOpen} onOpenChange={setIsBarcodeModalOpen}>
+            <Dialog
+                open={isBarcodeModalOpen}
+                onOpenChange={setIsBarcodeModalOpen}
+            >
                 <DialogContent className="max-w-md p-6 rounded-xl shadow-xl">
                     <DialogHeader>
                         <DialogTitle className="text-2xl font-bold text-gray-800">
@@ -404,7 +605,10 @@ export default function Show({ auth, product, categories, units, suppliers }) {
                             Tutup
                         </Button>
                         <a
-                            href={route("products.download-barcode", product.id)}
+                            href={route(
+                                "products.download-barcode",
+                                product.id
+                            )}
                             target="_blank"
                             rel="noopener noreferrer"
                         >
@@ -424,7 +628,9 @@ export default function Show({ auth, product, categories, units, suppliers }) {
             <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
                 <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
-                        <DialogTitle className="text-2xl">Edit Produk</DialogTitle>
+                        <DialogTitle className="text-2xl">
+                            Edit Produk
+                        </DialogTitle>
                         <DialogDescription>
                             Ubah data produk sesuai kebutuhan.
                         </DialogDescription>
@@ -440,7 +646,10 @@ export default function Show({ auth, product, categories, units, suppliers }) {
             </Dialog>
 
             {/* Delete Confirmation Modal */}
-            <Dialog open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen}>
+            <Dialog
+                open={isDeleteModalOpen}
+                onOpenChange={setIsDeleteModalOpen}
+            >
                 <DialogContent className="max-w-md p-0 rounded-2xl shadow-2xl bg-white border-0 overflow-hidden">
                     <div className="bg-gradient-to-r from-red-500 to-red-600 p-6 text-center relative overflow-hidden">
                         <div className="absolute inset-0 opacity-10">

@@ -209,6 +209,9 @@ class ProductController extends Controller
             'lead_time' => 'nullable|integer|min:1',
             'current_stock' => 'nullable|integer|min:0',
             'daily_usage_rate' => 'nullable|numeric|min:0',
+            'minimum_stock' => 'nullable|integer|min:0',
+            'holding_cost_percentage' => 'nullable|numeric|min:0|max:1',
+            'ordering_cost' => 'nullable|numeric|min:0',
         ]);
 
         try {
@@ -216,6 +219,9 @@ class ProductController extends Controller
             $validated['current_stock'] = $validated['current_stock'] ?? 0;
             $validated['lead_time'] = $validated['lead_time'] ?? 7;
             $validated['daily_usage_rate'] = $validated['daily_usage_rate'] ?? 0.5;
+            $validated['minimum_stock'] = $validated['minimum_stock'] ?? 10;
+            $validated['holding_cost_percentage'] = $validated['holding_cost_percentage'] ?? 0.2;
+            $validated['ordering_cost'] = $validated['ordering_cost'] ?? 25000;
 
             $product = Product::create($validated);
 
@@ -312,6 +318,9 @@ class ProductController extends Controller
             'lead_time' => 'nullable|integer|min:1',
             'current_stock' => 'nullable|integer|min:0',
             'daily_usage_rate' => 'nullable|numeric|min:0',
+            'minimum_stock' => 'nullable|integer|min:0',
+            'holding_cost_percentage' => 'nullable|numeric|min:0|max:1',
+            'ordering_cost' => 'nullable|numeric|min:0',
         ]);
 
         try {
