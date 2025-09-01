@@ -1,11 +1,11 @@
 "use client";
 
-import { Bell, ChevronsUpDown, LogOut, Settings } from "lucide-react";
+import { ChevronsUpDown, LogOut } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useState } from "react";
-import { Inertia } from "@inertiajs/inertia";
-import { Link, usePage } from "@inertiajs/react";
+import { router } from "@inertiajs/react";
+import { usePage } from "@inertiajs/react";
 import {
     SidebarMenu,
     SidebarMenuButton,
@@ -15,13 +15,11 @@ import {
 import {
     DropdownMenu,
     DropdownMenuContent,
-    DropdownMenuGroup,
     DropdownMenuItem,
     DropdownMenuLabel,
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import LogoutAlert from "./LogoutAlert";
 
 export function NavUser({ isNavbar, btnClassName }) {
@@ -34,14 +32,16 @@ export function NavUser({ isNavbar, btnClassName }) {
     if (!user) return null;
 
     const handleLogout = () => {
-        Inertia.post(
-            "/logout",
-            {},
-            {
-                onSuccess: () => console.log("Logout berhasil"),
-                onError: (err) => console.error("Logout gagal", err),
+        router.post('/logout', {}, {
+            onSuccess: () => {
+                console.log("Keluar berhasil");
+                // Force redirect ke login page
+                window.location.href = '/login';
+            },
+            onError: (err) => {
+                console.error("Keluar gagal", err);
             }
-        );
+        });
     };
 
     return (
@@ -56,15 +56,6 @@ export function NavUser({ isNavbar, btnClassName }) {
                                 btnClassName
                             )}
                         >
-                            <Avatar className="h-8 w-8 rounded-lg">
-                                <AvatarImage
-                                    src={user.avatar || undefined}
-                                    alt={user.name}
-                                />
-                                <AvatarFallback className="rounded-lg">
-                                    {user.name?.[0] ?? "U"}
-                                </AvatarFallback>
-                            </Avatar>
                             <div className="grid flex-1 text-left text-sm leading-tight">
                                 <span className="truncate font-semibold">
                                     {user.name}
@@ -86,15 +77,6 @@ export function NavUser({ isNavbar, btnClassName }) {
                         {!isNavbar && (
                             <DropdownMenuLabel className="p-0 font-normal">
                                 <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                                    <Avatar className="h-8 w-8 rounded-lg">
-                                        <AvatarImage
-                                            src={user.avatar || undefined}
-                                            alt={user.name}
-                                        />
-                                        <AvatarFallback className="rounded-lg">
-                                            {user.name?.[0] ?? "U"}
-                                        </AvatarFallback>
-                                    </Avatar>
                                     <div className="grid flex-1 text-left text-sm leading-tight">
                                         <span className="truncate font-semibold">
                                             {user.name}
@@ -109,14 +91,12 @@ export function NavUser({ isNavbar, btnClassName }) {
 
                         <DropdownMenuSeparator />
 
-                        <DropdownMenuSeparator />
-
                         <DropdownMenuItem
                             onClick={() => setShowLogoutAlert(true)}
                             className="bg-red-500 text-white hover:bg-red-600"
                         >
-                            <LogOut className="mr-2 " />
-                            Log out
+                            <LogOut className="mr-2" />
+                            Keluar
                         </DropdownMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>

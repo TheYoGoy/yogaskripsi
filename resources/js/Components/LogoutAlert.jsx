@@ -20,19 +20,19 @@ const LogoutAlert = ({ open, onOpenChange, onConfirm }) => {
             <AlertDialogContent>
                 <AlertDialogHeader>
                     <AlertDialogTitle>
-                        Are you absolutely sure?
+                        Yakin ingin keluar?
                     </AlertDialogTitle>
                     <AlertDialogDescription>
-                        Are you sure you want to terminate session?
+                        Apakah Anda yakin ingin mengakhiri sesi ini?
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogCancel>Batal</AlertDialogCancel>
                     <AlertDialogAction
                         className="bg-destructive hover:bg-destructive/80"
                         onClick={handleConfirm}
                     >
-                        Continue
+                        Keluar
                     </AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>

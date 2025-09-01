@@ -30,21 +30,21 @@ class UserRoleSeeder extends Seeder
         $users = [
             [
                 'name' => 'System Administrator',
-                'email' => 'admin@example.com',
+                'email' => 'admin@brawijaya.com',
                 'password' => Hash::make('password'),
                 'role' => 'admin',
                 'spatie_role' => 'admin'
             ],
             [
                 'name' => 'Stock Manager',
-                'email' => 'manager@example.com',
+                'email' => 'manajer@brawijaya.com',
                 'password' => Hash::make('password'),
                 'role' => 'manager',
                 'spatie_role' => 'manager'
             ],
             [
                 'name' => 'Stock Staff',
-                'email' => 'staff@example.com',
+                'email' => 'staf@brawijaya.com',
                 'password' => Hash::make('password'),
                 'role' => 'staff',
                 'spatie_role' => 'staff'

@@ -8,24 +8,64 @@ use Illuminate\Support\Facades\Hash;
 
 class UserSeeder extends Seeder
 {
-    /**
-     * Run the database seeds.
-     */
     public function run(): void
     {
-        // 1. ADMIN USER
-        $admin = User::create([
-            'name' => 'Administrator',
-            'email' => 'admin@example.com',
+        $this->command->info('👥 Creating 9 users (3 per role)...');
+
+        // ==================== 3 ADMIN USERS ====================
+        $admin1 = User::create([
+            'name' => 'Admin Sistem',
+            'email' => 'admin@brawijaya.com',
             'password' => Hash::make('password'),
             'email_verified_at' => now(),
         ]);
-        $admin->assignRole('admin');
+        $admin1->assignRole('admin');
 
-        // 2. STAFF USERS
+        $admin2 = User::create([
+            'name' => 'Admin IT',
+            'email' => 'admin2@brawijaya.com',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+        $admin2->assignRole('admin');
+
+        $admin3 = User::create([
+            'name' => 'Admin Utama',
+            'email' => 'admin3@brawijaya.com',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+        $admin3->assignRole('admin');
+
+        // ==================== 3 MANAGER USERS ====================
+        $manager1 = User::create([
+            'name' => 'Manager Gudang',
+            'email' => 'manager@brawijaya.com',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+        $manager1->assignRole('manager');
+
+        $manager2 = User::create([
+            'name' => 'Manager Operasional',
+            'email' => 'manager2@brawijaya.com',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+        $manager2->assignRole('manager');
+
+        $manager3 = User::create([
+            'name' => 'Manager Purchasing',
+            'email' => 'manager3@brawijaya.com',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+        $manager3->assignRole('manager');
+
+        // ==================== 3 STAFF USERS ====================
         $staff1 = User::create([
             'name' => 'Staff Gudang',
-            'email' => 'staff@example.com',
+            'email' => 'staff@brawijaya.com',
             'password' => Hash::make('password'),
             'email_verified_at' => now(),
         ]);
@@ -33,7 +73,7 @@ class UserSeeder extends Seeder
 
         $staff2 = User::create([
             'name' => 'Staff Inventory',
-            'email' => 'staff2@example.com',
+            'email' => 'staff2@brawijaya.com',
             'password' => Hash::make('password'),
             'email_verified_at' => now(),
         ]);
@@ -41,50 +81,35 @@ class UserSeeder extends Seeder
 
         $staff3 = User::create([
             'name' => 'Staff Operasional',
-            'email' => 'staff3@example.com',
+            'email' => 'staff3@brawijaya.com',
             'password' => Hash::make('password'),
             'email_verified_at' => now(),
         ]);
         $staff3->assignRole('staff');
 
-        // 3. MANAGER USERS
-        $manager1 = User::create([
-            'name' => 'Manager Warehouse',
-            'email' => 'manager@example.com',
-            'password' => Hash::make('password'),
-            'email_verified_at' => now(),
-        ]);
-        $manager1->assignRole('manager');
-
-        $manager2 = User::create([
-            'name' => 'Manager Purchasing',
-            'email' => 'manager2@example.com',
-            'password' => Hash::make('password'),
-            'email_verified_at' => now(),
-        ]);
-        $manager2->assignRole('manager');
-
-        // 4. TEST USER (untuk development)
-        $testUser = User::create([
-            'name' => 'Test User',
-            'email' => 'test@test.com',
-            'password' => Hash::make('password'),
-            'email_verified_at' => now(),
-        ]);
-        $testUser->assignRole('staff'); // Default sebagai staff
-
-        $this->command->info('✅ Users seeded successfully with 3 roles!');
+        // Display results
+        $this->command->info('✅ 9 Users created successfully!');
         $this->command->info('');
-        $this->command->info('📧 Login credentials:');
-        $this->command->info('   🔴 ADMIN: admin@example.com / password');
-        $this->command->info('   🟡 MANAGER: manager@example.com / password');
-        $this->command->info('   🟡 MANAGER 2: manager2@example.com / password');
-        $this->command->info('   🟢 STAFF: staff@example.com / password');
-        $this->command->info('   🟢 STAFF 2: staff2@example.com / password');
-        $this->command->info('   🟢 STAFF 3: staff3@example.com / password');
-        $this->command->info('   🔵 TEST: test@test.com / password');
+        $this->command->info('📧 Login Credentials:');
         $this->command->info('');
-        $this->command->info('🔑 Role Hierarchy:');
-        $this->command->info('   ADMIN > MANAGER > STAFF');
+        $this->command->info('🔴 ADMIN USERS (Full Access):');
+        $this->command->info('   1. admin@brawijaya.com / password (Admin Sistem)');
+        $this->command->info('   2. admin2@brawijaya.com / password (Admin IT)');
+        $this->command->info('   3. admin3@brawijaya.com / password (Admin Utama)');
+        $this->command->info('');
+        $this->command->info('🟡 MANAGER USERS (All except User Management):');
+        $this->command->info('   1. manager@brawijaya.com / password (Manager Gudang)');
+        $this->command->info('   2. manager2@brawijaya.com / password (Manager Operasional)');
+        $this->command->info('   3. manager3@brawijaya.com / password (Manager Purchasing)');
+        $this->command->info('');
+        $this->command->info('🟢 STAFF USERS (Products, Transactions, Stock only):');
+        $this->command->info('   1. staff@brawijaya.com / password (Staff Gudang)');
+        $this->command->info('   2. staff2@brawijaya.com / password (Staff Inventory)');
+        $this->command->info('   3. staff3@brawijaya.com / password (Staff Operasional)');
+        $this->command->info('');
+        $this->command->info('🔑 Role Access Summary:');
+        $this->command->info('   ADMIN: Everything (including User Management)');
+        $this->command->info('   MANAGER: Everything EXCEPT User Management');
+        $this->command->info('   STAFF: Only Products, Purchase Transactions, Stock In/Out');
     }
 }

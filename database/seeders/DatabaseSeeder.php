@@ -2,7 +2,6 @@
 
 namespace Database\Seeders;
 
-// use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
@@ -12,28 +11,24 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // Panggil seeder Anda di sini dalam urutan yang benar (dependencies first)
-        $this->call([
-            // Setup roles dan permissions terlebih dahulu
-            RolePermissionSeeder::class,
+        $this->command->info('🌱 Starting Database Seeding...');
+        $this->command->info('');
 
-            // User seeder (yang akan menggunakan roles dari RolePermissionSeeder)
-            UserSeeder::class,                    // ✅ UNCOMMENT INI!
+        // 1. Setup Roles & Permissions FIRST
+        $this->call(PermissionSeeder::class);
+        
+        // 2. Create Users (needs roles to exist first)
+        $this->call(UserSeeder::class);
+        
+        // 3. Create Master Data
+        $this->call(BrawijayaDigitalPrintSeeder::class);
 
-            // Master data
-            BrawijayaDigitalPrintSeeder::class,
-            //CategorySeeder::class,
-            //UnitSeeder::class,
-            //SupplierSeeder::class,
-            //ProductSeeder::class,
-
-            // Settings dan data lainnya
-            //SettingsSeeder::class,
-
-            // Optional: Sample data untuk testing (uncomment jika diperlukan)
-            // StockInSeeder::class,
-            // StockOutSeeder::class,
-            // PurchaseTransactionSeeder::class,
-        ]);
+        $this->command->info('');
+        $this->command->info('🎉 Database seeding completed successfully!');
+        $this->command->info('');
+        $this->command->info('🚀 Ready to test your role-based access control:');
+        $this->command->info('   • Login as STAFF → Limited access');
+        $this->command->info('   • Login as MANAGER → Everything except users');
+        $this->command->info('   • Login as ADMIN → Full system access');
     }
 }
